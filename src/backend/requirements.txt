@@ -1,23 +1,64 @@
+# FastAPI and server dependencies
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# LangChain and RAG dependencies
 langchain==0.2.11
 langchain-community==0.2.10
 langchain-google-genai==1.0.8
 langgraph==0.1.14
 langchain-chroma==0.1.2
+
+# Vector database
 chromadb==0.4.24
 fastembed==0.3.6
+
+# Embeddings and transformers
 sentence-transformers==2.2.2
-pypdf2==3.0.1
-python-multipart==0.0.6
+ollama==0.2.1
+
+# PDF processing and OCR
+PyMuPDF==1.23.24  # Updated from pypdf2 for better performance
+pytesseract==0.3.10
+Pillow==10.0.1
+opencv-python==4.8.1.78
+
+# Indonesian NLP
+Sastrawi==1.0.1
+nltk==3.8.1
+
+# Text processing
 beautifulsoup4==4.12.2
+regex==2023.10.3
+
+# Async file operations
+aiofiles==23.2.0
+
+# HTTP and requests
 requests==2.31.0
+httpx==0.25.2
+
+# Configuration and environment
 python-dotenv==1.0.0
 pydantic==2.5.0
 pydantic-settings==2.1.0
+
+# Utility libraries
+tenacity==8.2.3
+typing-extensions==4.8.0
+numpy==1.24.3
+pandas==2.0.3
+
+# Development dependencies
 ruff==0.1.6
 mypy==1.7.0
 pytest==7.4.3
 pytest-asyncio==0.21.1
-tenacity==8.2.3
-typing-extensions==4.8.0
+
+# Monitoring and logging
+structlog==23.2.0
+
+# Performance
+uvloop==0.19.0  # For Linux/macOS only
+orjson==3.9.10  # Fast JSON parsing
