@@ -12,6 +12,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Menu, Plus, Brain, Clock, TrendingUp, Upload, FileText, Activity } from "lucide-react"
 import { saveChatsToStorage, loadChatsFromStorage } from "@/lib/storage"
 
+// API Base URL Configuration
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api"
+
 interface Message {
   id: string
   content: string
@@ -42,6 +45,7 @@ interface Document {
   content: string
   uploadedAt: Date
   status?: "processing" | "completed" | "error"
+  file?: File
 }
 
 interface ChatResponse {
@@ -85,6 +89,32 @@ interface ChatHistoryResponse {
   last_updated: string
 }
 
+// Helper function for API calls
+const apiCall = async (endpoint: string, options?: RequestInit) => {
+  const url = `${API_BASE_URL}${endpoint}`
+  console.log(`API Call: ${options?.method || 'GET'} ${url}`)
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options?.headers,
+      },
+    })
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`API Error: ${response.status} ${response.statusText}`, errorText)
+      throw new Error(`API Error: ${response.status} - ${errorText}`)
+    }
+    
+    return response
+  } catch (error) {
+    console.error(`Failed to call API endpoint ${endpoint}:`, error)
+    throw error
+  }
+}
+
 export default function HomePage() {
   const [chats, setChats] = useState<Chat[]>([])
   const [currentChatId, setCurrentChatId] = useState<string | null>(null)
@@ -116,11 +146,9 @@ export default function HomePage() {
 
   const fetchMetrics = useCallback(async () => {
     try {
-      const response = await fetch("/api/metrics")
-      if (response.ok) {
-        const data = await response.json()
-        setMetrics(data)
-      }
+      const response = await apiCall("/metrics")
+      const data = await response.json()
+      setMetrics(data)
     } catch (error) {
       console.error("Failed to fetch metrics:", error)
     }
@@ -129,34 +157,32 @@ export default function HomePage() {
   // Load chat history from backend
   const loadChatHistoryFromBackend = useCallback(async (sessionId: string, chatId: string) => {
     if (isLoadingHistory) return
-    
     setIsLoadingHistory(true)
+    
     try {
-      const response = await fetch(`/api/chat/${sessionId}`)
-      if (response.ok) {
-        const historyData: ChatHistoryResponse = await response.json()
-        
-        // Convert backend messages to frontend format
-        const convertedMessages: Message[] = historyData.messages.map((msg, index) => ({
-          id: `${sessionId}_${index}`,
-          content: msg.content,
-          role: msg.role as "user" | "assistant",
-          timestamp: new Date(msg.timestamp)
-        }))
+      const response = await apiCall(`/chat/${sessionId}`)
+      const historyData: ChatHistoryResponse = await response.json()
+      
+      // Convert backend messages to frontend format
+      const convertedMessages: Message[] = historyData.messages.map((msg, index) => ({
+        id: `${sessionId}_${index}`,
+        content: msg.content,
+        role: msg.role as "user" | "assistant",
+        timestamp: new Date(msg.timestamp)
+      }))
 
-        // Update the chat with loaded messages
-        setChats(prev => prev.map(chat => 
-          chat.id === chatId 
-            ? {
-                ...chat,
-                messages: convertedMessages,
-                session_id: sessionId
-              }
-            : chat
-        ))
-
-        console.log(`Loaded ${convertedMessages.length} messages from backend for session ${sessionId}`)
-      }
+      // Update the chat with loaded messages
+      setChats(prev => prev.map(chat => 
+        chat.id === chatId 
+          ? { 
+              ...chat, 
+              messages: convertedMessages, 
+              session_id: sessionId 
+            } 
+          : chat
+      ))
+      
+      console.log(`Loaded ${convertedMessages.length} messages from backend for session ${sessionId}`)
     } catch (error) {
       console.error("Failed to load chat history from backend:", error)
     } finally {
@@ -193,7 +219,7 @@ export default function HomePage() {
       setTimeout(() => sendMessageToChat(content, newChatId, attachments), 100)
       return
     }
-
+    
     sendMessageToChat(content, currentChatId, attachments)
   }
 
@@ -206,30 +232,25 @@ export default function HomePage() {
           const formData = new FormData()
           formData.append("file", file)
           
-          const response = await fetch("/api/upload", {
+          const response = await apiCall("/upload", {
             method: "POST",
             body: formData,
           })
           
           const result = await response.json()
-          if (!response.ok) {
-            throw new Error(result.message || "Failed to upload attachment")
-          }
-          
           return {
             filename: file.name,
             document_id: result.document_id,
             status: result.status
           }
         })
-        
+
         const uploadResults = await Promise.all(uploadPromises)
         console.log("Uploaded attachments:", uploadResults)
-        
+
         // Add note about uploaded attachments to the message
         const attachmentNote = `\n\n[Uploaded attachments: ${uploadResults.map(r => r.filename).join(", ")}]`
         content += attachmentNote
-        
       } catch (error) {
         console.error("Failed to upload attachments:", error)
         // Continue with the message even if attachments fail
@@ -280,18 +301,13 @@ export default function HomePage() {
         chat_history: chatHistory.length > 0 ? chatHistory : undefined
       }
 
-      const response = await fetch("/api/chat", {
+      const response = await apiCall("/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
       })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Network error" }))
-        throw new Error(errorData.error || `HTTP ${response.status}`)
-      }
 
       const data: ChatResponse = await response.json()
 
@@ -325,7 +341,6 @@ export default function HomePage() {
       }
     } catch (error) {
       console.error("Failed to send message:", error)
-      
       const errorMessage: Message = {
         id: `${Date.now()}_error`,
         content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
@@ -381,52 +396,52 @@ export default function HomePage() {
         formData.append("file", document.file)
       } else {
         // Fallback: create a file from document content (less reliable)
-        const blob = new Blob([document.content], { type: document.type || "application/octet-stream" })
-        const fileToUpload = new File([blob], document.name, { type: document.type })
+        const blob = new Blob([document.content], { 
+          type: document.type || "application/octet-stream" 
+        })
+        const fileToUpload = new File([blob], document.name, { 
+          type: document.type 
+        })
         formData.append("file", fileToUpload)
       }
 
-      const response = await fetch("/api/upload", {
+      const response = await apiCall("/upload", {
         method: "POST",
         body: formData,
       })
 
       const result: DocumentUploadResponse = await response.json()
 
-      if (response.ok) {
-        // Update document status to completed
-        setDocuments((prev) =>
-          prev.map((doc) =>
-            doc.id === document.id
-              ? { 
-                  ...doc, 
-                  status: "completed" as const,
-                  // Store the document_id from backend for future reference
-                  id: result.document_id || doc.id
-                }
-              : doc
-          )
+      // Update document status to completed
+      setDocuments((prev) =>
+        prev.map((doc) =>
+          doc.id === document.id
+            ? { 
+                ...doc, 
+                status: "completed" as const,
+                // Store the document_id from backend for future reference
+                id: result.document_id || doc.id
+              }
+            : doc
         )
-        
-        // Update metrics
-        fetchMetrics()
-        
-        console.log(`Document uploaded successfully: ${result.filename} (${result.chunks_created} chunks)`)
-      } else {
-        throw new Error(result.message || "Upload failed")
-      }
+      )
+
+      // Update metrics
+      fetchMetrics()
+
+      console.log(`Document uploaded successfully: ${result.filename} (${result.chunks_created} chunks)`)
     } catch (error) {
       console.error("Document upload failed:", error)
       
       // Update document status to error
       setDocuments((prev) =>
         prev.map((doc) =>
-          doc.id === document.id
-            ? { ...doc, status: "error" as const }
+          doc.id === document.id 
+            ? { ...doc, status: "error" as const } 
             : doc
         )
       )
-      
+
       // Show error to user (you might want to add a toast notification here)
       alert(`Failed to upload ${document.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
@@ -439,31 +454,26 @@ export default function HomePage() {
 
   const reprocessDocuments = async () => {
     try {
-      const response = await fetch("/api/documents/reprocess", {
+      const response = await apiCall("/documents/reprocess", {
         method: "POST",
       })
 
-      if (response.ok) {
-        const result = await response.json()
-        console.log("Document reprocessing started:", result.message)
-        
-        // Reset document statuses
-        setDocuments((prev) => 
-          prev.map(doc => ({ ...doc, status: "processing" as const }))
+      const result = await response.json()
+      console.log("Document reprocessing started:", result.message)
+
+      // Reset document statuses
+      setDocuments((prev) =>
+        prev.map(doc => ({ ...doc, status: "processing" as const }))
+      )
+
+      // Refresh metrics after a delay
+      setTimeout(() => {
+        fetchMetrics()
+        // Update document statuses back to completed
+        setDocuments((prev) =>
+          prev.map(doc => ({ ...doc, status: "completed" as const }))
         )
-        
-        // Refresh metrics after a delay
-        setTimeout(() => {
-          fetchMetrics()
-          // Update document statuses back to completed
-          setDocuments((prev) => 
-            prev.map(doc => ({ ...doc, status: "completed" as const }))
-          )
-        }, 5000)
-      } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to start reprocessing")
-      }
+      }, 5000)
     } catch (error) {
       console.error("Failed to start document reprocessing:", error)
       alert(`Failed to reprocess documents: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -474,11 +484,9 @@ export default function HomePage() {
   useEffect(() => {
     const fetchDocumentInfo = async () => {
       try {
-        const response = await fetch("/api/documents/info")
-        if (response.ok) {
-          const docInfo = await response.json()
-          console.log(`Backend has ${docInfo.total_documents} documents loaded`)
-        }
+        const response = await apiCall("/documents/info")
+        const docInfo = await response.json()
+        console.log(`Backend has ${docInfo.total_documents} documents loaded`)
       } catch (error) {
         console.error("Failed to fetch document info:", error)
       }
@@ -521,7 +529,12 @@ export default function HomePage() {
         {/* Header */}
         <header className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="md:hidden">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden"
+            >
               <Menu className="h-5 w-5" />
             </Button>
             <div>
@@ -544,6 +557,7 @@ export default function HomePage() {
               )}
             </div>
           </div>
+
           <div className="flex items-center gap-2">
             <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
               <DialogTrigger asChild>
@@ -566,15 +580,17 @@ export default function HomePage() {
                 />
               </DialogContent>
             </Dialog>
-            <Button 
-              onClick={reprocessDocuments} 
-              size="sm" 
+
+            <Button
+              onClick={reprocessDocuments}
+              size="sm"
               variant="outline"
               className="flex items-center gap-2"
             >
               <Activity className="h-4 w-4" />
               Reprocess
             </Button>
+
             <Button onClick={createNewChat} size="sm" className="flex items-center gap-2">
               <Plus className="h-4 w-4" />
               New Chat
@@ -590,7 +606,7 @@ export default function HomePage() {
               <span className="text-sm text-muted-foreground">Loading chat history...</span>
             </div>
           )}
-          
+
           {currentChat?.messages.length === 0 || !currentChat ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center max-w-2xl">
@@ -599,10 +615,10 @@ export default function HomePage() {
                 </div>
                 <h2 className="text-3xl font-bold mb-4">Indonesian Legal Assistant</h2>
                 <p className="text-muted-foreground mb-8 text-lg">
-                  Ask me about Indonesian laws and regulations. I can help you understand 
-                  legal documents, procedures, and provide guidance based on official sources.
+                  Ask me about Indonesian laws and regulations. I can help you understand legal
+                  documents, procedures, and provide guidance based on official sources.
                 </p>
-                
+
                 {/* Stats Cards */}
                 {metrics && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -617,6 +633,7 @@ export default function HomePage() {
                         </p>
                       </CardContent>
                     </Card>
+
                     <Card>
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm">Chats</CardTitle>
@@ -625,6 +642,7 @@ export default function HomePage() {
                         <div className="text-2xl font-bold">{metrics.total_chats}</div>
                       </CardContent>
                     </Card>
+
                     <Card>
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm">Success Rate</CardTitle>
@@ -632,11 +650,17 @@ export default function HomePage() {
                       <CardContent>
                         <div className="text-2xl font-bold">
                           {metrics.successful_responses + metrics.failed_responses > 0
-                            ? Math.round((metrics.successful_responses / (metrics.successful_responses + metrics.failed_responses)) * 100)
-                            : 0}%
+                            ? Math.round(
+                                (metrics.successful_responses /
+                                  (metrics.successful_responses + metrics.failed_responses)) *
+                                  100
+                              )
+                            : 0}
+                          %
                         </div>
                       </CardContent>
                     </Card>
+
                     <Card>
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm">Uptime</CardTitle>
@@ -652,8 +676,10 @@ export default function HomePage() {
 
                 {/* Example Topics */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
-                  <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer"
-                        onClick={() => sendMessage("Apa itu hukum perdata Indonesia?")}>
+                  <Card
+                    className="p-4 hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => sendMessage("Apa itu hukum perdata Indonesia?")}
+                  >
                     <div className="flex items-center gap-3 mb-2">
                       <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
                         <FileText className="w-4 h-4 text-blue-600" />
@@ -665,8 +691,10 @@ export default function HomePage() {
                     </p>
                   </Card>
 
-                  <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer"
-                        onClick={() => sendMessage("Bagaimana proses hukum pidana di Indonesia?")}>
+                  <Card
+                    className="p-4 hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => sendMessage("Bagaimana proses hukum pidana di Indonesia?")}
+                  >
                     <div className="flex items-center gap-3 mb-2">
                       <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
                         <Activity className="w-4 h-4 text-red-600" />
@@ -678,8 +706,10 @@ export default function HomePage() {
                     </p>
                   </Card>
 
-                  <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer"
-                        onClick={() => sendMessage("Apa saja peraturan bisnis di Indonesia?")}>
+                  <Card
+                    className="p-4 hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => sendMessage("Apa saja peraturan bisnis di Indonesia?")}
+                  >
                     <div className="flex items-center gap-3 mb-2">
                       <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
                         <TrendingUp className="w-4 h-4 text-green-600" />
@@ -743,11 +773,11 @@ export default function HomePage() {
         {/* Chat Input */}
         <div className="border-t border-border p-4">
           <div className="w-full mx-auto">
-            <ChatInput 
-              onSendMessage={sendMessage} 
+            <ChatInput
+              onSendMessage={sendMessage}
               disabled={isMessageLoading}
               placeholder={
-                currentChat?.messages.length 
+                currentChat?.messages.length
                   ? "Continue your legal consultation..."
                   : "Ask a question about Indonesian law..."
               }

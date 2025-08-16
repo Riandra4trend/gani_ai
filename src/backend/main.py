@@ -1,4 +1,4 @@
-# main.py code - FIXED VERSION
+# main.py code - UPDATED VERSION with Smart Document Loading
 import asyncio
 import os
 import time
@@ -50,7 +50,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     include_sources: Optional[bool] = True
-    chat_history: Optional[List[Dict[str, Any]]] = None  # Add this field for context
+    chat_history: Optional[List[Dict[str, Any]]] = None
 
 class ChatResponse(BaseModel):
     session_id: str
@@ -88,27 +88,111 @@ class DocumentUploadResponse(BaseModel):
     chunks_created: Optional[int] = 0
 
 
+async def load_new_documents_from_folder():
+    """Smart document loading - only process new or modified files."""
+    try:
+        logger.info("🔄 Checking for new documents in folder...")
+        
+        # Get processing stats before
+        stats_before = document_processor.get_processed_files_info()
+        logger.info(f"📊 Before: {stats_before['processed_files']} files processed, {stats_before['total_chunks_created']} total chunks")
+        
+        # Load only new documents
+        new_documents = await document_processor.load_new_documents_only()
+        
+        if new_documents:
+            logger.info(f"📚 Adding {len(new_documents)} new document chunks to vector store...")
+            
+            # Add to vector store
+            result = await vector_store_service.add_documents(new_documents)
+            
+            # Update metrics
+            app_metrics["documents_processed"] += len(new_documents)
+            
+            # Get stats after
+            stats_after = document_processor.get_processed_files_info()
+            logger.info(f"📊 After: {stats_after['processed_files']} files processed, {stats_after['total_chunks_created']} total chunks")
+            
+            return {
+                "new_documents_loaded": len(new_documents),
+                "processing_result": result,
+                "stats": stats_after
+            }
+        else:
+            logger.info("✅ No new documents found - all files are up to date")
+            return {
+                "new_documents_loaded": 0,
+                "message": "No new documents to process",
+                "stats": stats_before
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to load documents from folder: {e}")
+        raise
+
+
+async def force_reload_all_documents():
+    """Force reload all documents - ignores processed files database."""
+    try:
+        logger.info("🔄 Force reloading ALL documents...")
+        
+        # Force reprocess all documents
+        all_documents = await document_processor.force_reprocess_all()
+        
+        if all_documents:
+            logger.info(f"📚 Adding {len(all_documents)} document chunks to vector store...")
+            
+            # Add to vector store
+            result = await vector_store_service.add_documents(all_documents)
+            
+            # Update metrics
+            app_metrics["documents_processed"] = len(all_documents)
+            
+            # Get final stats
+            stats = document_processor.get_processed_files_info()
+            logger.info(f"📊 Final: {stats['processed_files']} files processed, {stats['total_chunks_created']} total chunks")
+            
+            return {
+                "documents_reloaded": len(all_documents),
+                "processing_result": result,
+                "stats": stats
+            }
+        else:
+            logger.warning("⚠️ No documents found to reload")
+            return {
+                "documents_reloaded": 0,
+                "message": "No documents found",
+                "stats": {}
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to reload documents: {e}")
+        raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan management with automatic document loading."""
+    """Application lifespan management with smart document loading."""
     # Startup
     logger.info("🚀 Starting Indonesian Legal RAG Assistant...")
     
     try:
         # Initialize vector store
         logger.info("📊 Initializing vector store...")
-        has_data = await vector_store_service.initialize_vector_store()
+        has_existing_data = await vector_store_service.initialize_vector_store()
         
-        # Always load documents from folder on startup
-        # logger.info("📚 Loading documents from 'documents' folder...")
-        # await load_all_documents_from_folder()
+        # Smart document loading - only process new files
+        logger.info("📚 Smart loading documents from 'documents' folder...")
+        load_result = await load_new_documents_from_folder()
         
         # Get final collection info
         collection_info = await vector_store_service.get_collection_info()
         document_count = collection_info.get('document_count', 0)
         app_metrics["total_documents"] = document_count
         
-        logger.info(f"✅ Application startup complete! {document_count} documents loaded")
+        logger.info(f"✅ Application startup complete!")
+        logger.info(f"📊 Total documents in vector store: {document_count}")
+        logger.info(f"📊 New documents processed: {load_result['new_documents_loaded']}")
         
     except Exception as e:
         logger.error(f"❌ Startup failed: {e}")
@@ -504,54 +588,97 @@ async def get_documents_info():
     """Get information about the document collection."""
     try:
         collection_info = await vector_store_service.get_collection_info()
+        processing_stats = document_processor.get_processing_stats()
+        
         return {
             "total_documents": collection_info.get("document_count", 0),
             "status": collection_info.get("status", "unknown"),
             "embedding_model": "nomic-embed-text",
-            "last_updated": datetime.now()
+            "last_updated": datetime.now(),
+            "processing_stats": processing_stats
         }
     except Exception as e:
         logger.error(f"❌ Failed to get document info: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Reprocess all documents
+# Check for new documents endpoint
+@app.post("/api/documents/check-new")
+async def check_new_documents(background_tasks: BackgroundTasks):
+    """Check for and process new documents in the documents folder."""
+    try:
+        logger.info("🔄 Manual check for new documents...")
+        
+        if background_tasks:
+            background_tasks.add_task(load_new_documents_from_folder)
+            return {"message": "Checking for new documents started", "status": "processing"}
+        else:
+            result = await load_new_documents_from_folder()
+            return {
+                "message": "New documents check completed",
+                "status": "completed",
+                "result": result
+            }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to check new documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Reprocess all documents endpoint
 @app.post("/api/documents/reprocess")
 async def reprocess_documents(background_tasks: BackgroundTasks):
-    """Reprocess all documents in the documents folder."""
+    """Force reprocess all documents in the documents folder."""
     try:
         logger.info("🔄 Starting document reprocessing...")
         
-        # Clear existing data
-        await vector_store_service.clear_collection()
-        
-        # Reprocess in background
         if background_tasks:
-            background_tasks.add_task(reprocess_all_documents)
+            background_tasks.add_task(force_reload_all_documents)
+            return {"message": "Document reprocessing started", "status": "processing"}
         else:
-            await reprocess_all_documents()
-        
-        return {"message": "Document reprocessing started", "status": "processing"}
+            result = await force_reload_all_documents()
+            return {
+                "message": "Document reprocessing completed",
+                "status": "completed",
+                "result": result
+            }
         
     except Exception as e:
         logger.error(f"❌ Failed to start reprocessing: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def reprocess_all_documents():
-    """Background task to reprocess all documents."""
+# Clear processed files database
+@app.post("/api/documents/clear-processed-db")
+async def clear_processed_files_database():
+    """Clear the processed files database to force reprocessing on next check."""
     try:
-        # Reset metrics
-        app_metrics["documents_processed"] = 0
-        app_metrics["total_documents"] = 0
+        document_processor.clear_processed_files_db()
         
-        # Load documents
-        # await load_all_documents_from_folder()
-        
-        logger.info("✅ Document reprocessing complete")
+        return {
+            "message": "Processed files database cleared",
+            "status": "success",
+            "note": "Next document check will reprocess all files"
+        }
         
     except Exception as e:
-        logger.error(f"❌ Document reprocessing failed: {e}")
+        logger.error(f"❌ Failed to clear processed files database: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Get processed files info
+@app.get("/api/documents/processed-info")
+async def get_processed_files_info():
+    """Get information about processed files."""
+    try:
+        stats = document_processor.get_processed_files_info()
+        return {
+            "processed_files_info": stats,
+            "timestamp": datetime.now()
+        }
+    except Exception as e:
+        logger.error(f"❌ Failed to get processed files info: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Additional endpoint for bulk operations (optional)

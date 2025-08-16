@@ -1,5 +1,6 @@
 """
 Enhanced Document Processor with OCR, Indonesian NLP Pipeline, and Ollama Embeddings.
+Includes smart document loading that tracks processed files to avoid reprocessing.
 """
 
 import os
@@ -7,6 +8,8 @@ import io
 import re
 import asyncio
 import logging
+import json
+import hashlib
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
@@ -66,6 +69,10 @@ class DocumentProcessor:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         
+        # File to track processed documents
+        self.processed_files_db = self.documents_folder / "processed_files.json"
+        self.processed_files = self._load_processed_files()
+        
         # Initialize components
         self._setup_nlp_components()
         self._setup_embeddings()
@@ -75,6 +82,98 @@ class DocumentProcessor:
         self.documents_folder.mkdir(exist_ok=True)
         
         logger.info(f"✅ DocumentProcessor initialized with Ollama model: {ollama_model}")
+    
+    def _load_processed_files(self) -> Dict[str, Dict]:
+        """Load the database of processed files."""
+        try:
+            if self.processed_files_db.exists():
+                with open(self.processed_files_db, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load processed files database: {e}")
+        return {}
+    
+    def _save_processed_files(self):
+        """Save the database of processed files."""
+        try:
+            with open(self.processed_files_db, 'w', encoding='utf-8') as f:
+                json.dump(self.processed_files, f, indent=2, default=str)
+        except Exception as e:
+            logger.error(f"Failed to save processed files database: {e}")
+    
+    def _get_file_hash(self, file_path: Path) -> str:
+        """Generate hash of file content for change detection."""
+        try:
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+                return hashlib.md5(file_content).hexdigest()
+        except Exception as e:
+            logger.error(f"Failed to generate hash for {file_path}: {e}")
+            return ""
+    
+    def _is_file_processed(self, file_path: Path) -> bool:
+        """Check if file has already been processed and hasn't changed."""
+        try:
+            file_key = str(file_path.name)
+            if file_key not in self.processed_files:
+                return False
+            
+            stored_info = self.processed_files[file_key]
+            current_hash = self._get_file_hash(file_path)
+            current_size = file_path.stat().st_size
+            current_mtime = file_path.stat().st_mtime
+            
+            # Check if file has changed
+            return (
+                stored_info.get('hash') == current_hash and
+                stored_info.get('size') == current_size and
+                stored_info.get('mtime') == current_mtime
+            )
+        except Exception as e:
+            logger.error(f"Error checking if file is processed {file_path}: {e}")
+            return False
+    
+    def _mark_file_processed(self, file_path: Path, document_count: int):
+        """Mark file as processed with metadata."""
+        try:
+            file_key = str(file_path.name)
+            self.processed_files[file_key] = {
+                'hash': self._get_file_hash(file_path),
+                'size': file_path.stat().st_size,
+                'mtime': file_path.stat().st_mtime,
+                'processed_at': datetime.now().isoformat(),
+                'document_count': document_count,
+                'file_path': str(file_path)
+            }
+            self._save_processed_files()
+        except Exception as e:
+            logger.error(f"Failed to mark file as processed {file_path}: {e}")
+    
+    def get_new_files(self) -> List[Path]:
+        """Get list of new or modified files that need processing."""
+        pdf_files = list(self.documents_folder.glob("*.pdf"))
+        new_files = []
+        
+        for pdf_file in pdf_files:
+            if not self._is_file_processed(pdf_file):
+                new_files.append(pdf_file)
+                logger.info(f"📄 New/modified file detected: {pdf_file.name}")
+        
+        return new_files
+    
+    def get_processed_files_info(self) -> Dict[str, Any]:
+        """Get information about processed files."""
+        total_files = len(list(self.documents_folder.glob("*.pdf")))
+        processed_count = len(self.processed_files)
+        total_chunks = sum(info.get('document_count', 0) for info in self.processed_files.values())
+        
+        return {
+            "total_pdf_files": total_files,
+            "processed_files": processed_count,
+            "unprocessed_files": total_files - processed_count,
+            "total_chunks_created": total_chunks,
+            "processed_files_list": list(self.processed_files.keys())
+        }
     
     def _setup_nlp_components(self):
         """Setup Indonesian NLP components."""
@@ -127,6 +226,63 @@ class DocumentProcessor:
             separators=["\n\n", "\n", ".", "!", "?", ",", " ", ""]
         )
     
+    async def load_new_documents_only(self) -> List[Document]:
+        """
+        Load and process only new or modified documents from the documents folder.
+        
+        Returns:
+            List of processed Document objects from new files
+        """
+        logger.info(f"🔄 Checking for new documents in: {self.documents_folder}")
+        
+        new_files = self.get_new_files()
+        if not new_files:
+            logger.info("✅ No new documents to process")
+            return []
+        
+        logger.info(f"📁 Found {len(new_files)} new/modified files to process")
+        
+        all_documents = []
+        
+        for pdf_file in new_files:
+            try:
+                logger.info(f"📖 Processing: {pdf_file.name}")
+                
+                # Extract text from PDF
+                text_content = await self._extract_pdf_content(pdf_file)
+                
+                if not text_content or len(text_content.strip()) < 100:
+                    logger.warning(f"⚠️ Insufficient content in {pdf_file.name}")
+                    continue
+                
+                # Create document metadata
+                metadata = self._create_document_metadata(
+                    title=pdf_file.stem,
+                    content=text_content,
+                    doc_type=DocumentType.PDF,
+                    source_file=str(pdf_file)
+                )
+                
+                # Process document through pipeline
+                processed_docs = await self._process_document_pipeline(
+                    content=text_content,
+                    metadata=metadata
+                )
+                
+                all_documents.extend(processed_docs)
+                
+                # Mark file as processed
+                self._mark_file_processed(pdf_file, len(processed_docs))
+                
+                logger.info(f"✅ Processed {pdf_file.name}: {len(processed_docs)} chunks")
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to process {pdf_file.name}: {e}")
+                continue
+        
+        logger.info(f"✅ Total new documents processed: {len(all_documents)}")
+        return all_documents
+    
     async def load_documents_from_folder(self) -> List[Document]:
         """
         Load and process all PDF documents from the documents folder.
@@ -171,6 +327,10 @@ class DocumentProcessor:
                 )
                 
                 all_documents.extend(processed_docs)
+                
+                # Mark file as processed
+                self._mark_file_processed(pdf_file, len(processed_docs))
+                
                 logger.info(f"✅ Processed {pdf_file.name}: {len(processed_docs)} chunks")
                 
             except Exception as e:
@@ -179,6 +339,28 @@ class DocumentProcessor:
         
         logger.info(f"✅ Total processed documents: {len(all_documents)}")
         return all_documents
+    
+    async def force_reprocess_all(self) -> List[Document]:
+        """
+        Force reprocess all documents, ignoring the processed files database.
+        
+        Returns:
+            List of processed Document objects
+        """
+        logger.info("🔄 Force reprocessing all documents...")
+        
+        # Clear processed files database
+        self.processed_files = {}
+        self._save_processed_files()
+        
+        # Process all documents
+        return await self.load_documents_from_folder()
+    
+    def clear_processed_files_db(self):
+        """Clear the processed files database."""
+        self.processed_files = {}
+        self._save_processed_files()
+        logger.info("🗑️ Cleared processed files database")
     
     async def _extract_pdf_content(self, pdf_path: Path) -> str:
         """
@@ -307,7 +489,7 @@ class DocumentProcessor:
                 "title": metadata.title,
                 "chunk_id": f"{metadata.document_id}_{i}",
                 "chunk_index": i,
-                "source": getattr(metadata, "source_file", getattr(metadata, "source", None)),  # ✅ fallback
+                "source": getattr(metadata, "source_file", getattr(metadata, "source", None)),
                 "document_type": metadata.document_type.value if hasattr(metadata.document_type, "value") else str(metadata.document_type),
                 "created_at": metadata.created_at.isoformat() if getattr(metadata, "created_at", None) else None,
                 "word_count": len(chunk.split()),
@@ -430,8 +612,6 @@ class DocumentProcessor:
             # fallback supaya tetap ada info sumber
             source_file=source_file if hasattr(DocumentMetadata, "source_file") else None  
         )
-
-
     
     async def process_uploaded_file(self, 
                                     file_content: bytes, 
@@ -550,11 +730,14 @@ class DocumentProcessor:
         Returns:
             Dictionary with processing stats
         """
+        files_info = self.get_processed_files_info()
+        
         return {
             "documents_folder": str(self.documents_folder),
             "ollama_model": self.ollama_model,
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
+            "files_info": files_info,
             "nlp_components": {
                 "stemmer_available": self.stemmer is not None,
                 "stopword_remover_available": self.stopword_remover is not None,

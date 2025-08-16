@@ -522,37 +522,61 @@ Berikan analisis dalam format JSON yang diminta."""
                     context_terms = " ".join(conversation_context["topics"])
                     search_query = f"{query} {context_terms}"
             
-            # FIXED: Check for available search methods and use appropriate one
-            retrieved_docs = []
-            
-            # Try hybrid_search first, fallback to other methods
-            if hasattr(vector_store_service, 'hybrid_search'):
-                retrieved_docs = await vector_store_service.hybrid_search(
-                    search_query,
-                    k=settings.retrieval_k
-                )
-            elif hasattr(vector_store_service, 'semantic_search'):
-                retrieved_docs = await vector_store_service.semantic_search(
-                    search_query,
-                    k=settings.retrieval_k
-                )
-            elif hasattr(vector_store_service, 'search'):
-                retrieved_docs = await vector_store_service.search(
-                    search_query,
-                    k=settings.retrieval_k
-                )
-            elif hasattr(vector_store_service, 'similarity_search'):
-                # For synchronous similarity_search, wrap in executor
-                retrieved_docs = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: vector_store_service.similarity_search(search_query, k=settings.retrieval_k)
-                )
-            else:
-                logger.error("No suitable search method found in vector_store_service")
-                retrieved_docs = []
+            # FIXED: Use optimized similarity search method
+            try:
+                # Try optimized search first
+                if hasattr(vector_store_service, 'similarity_search_optimized'):
+                    retrieved_docs = await vector_store_service.similarity_search_optimized(
+                        search_query,
+                        k=settings.retrieval_k
+                    )
+                    logger.info(f"Retrieved {len(retrieved_docs)} documents using optimized search")
+                else:
+                    # Fallback to regular similarity search
+                    retrieved_docs = await vector_store_service.similarity_search(
+                        search_query,
+                        k=settings.retrieval_k
+                    )
+                    logger.info(f"Retrieved {len(retrieved_docs)} documents using regular search")
+                
+            except Exception as search_error:
+                logger.error(f"Primary search method failed: {search_error}")
+                
+                # Fallback: Try synchronous similarity_search if available
+                try:
+                    if hasattr(vector_store_service.vector_store, 'similarity_search'):
+                        # Use synchronous method as fallback
+                        retrieved_docs = await asyncio.get_event_loop().run_in_executor(
+                            None,
+                            lambda: vector_store_service.vector_store.similarity_search(
+                                search_query, 
+                                k=settings.retrieval_k
+                            )
+                        )
+                        
+                        # Convert to RetrievedDocument objects if needed
+                        if retrieved_docs and not isinstance(retrieved_docs[0], RetrievedDocument):
+                            converted_docs = []
+                            for doc in retrieved_docs:
+                                converted_doc = RetrievedDocument(
+                                    content=doc.page_content if hasattr(doc, 'page_content') else str(doc),
+                                    metadata=doc.metadata if hasattr(doc, 'metadata') else {},
+                                    relevance_score=0.7  # Default score
+                                )
+                                converted_docs.append(converted_doc)
+                            retrieved_docs = converted_docs
+                        
+                        logger.info(f"Retrieved {len(retrieved_docs)} documents using fallback method")
+                    else:
+                        logger.error("No suitable search method found")
+                        retrieved_docs = []
+                        
+                except Exception as fallback_error:
+                    logger.error(f"Fallback search also failed: {fallback_error}")
+                    retrieved_docs = []
             
             state.retrieved_docs = retrieved_docs
-            logger.info(f"Retrieved {len(retrieved_docs)} documents with context")
+            logger.info(f"Final result: {len(retrieved_docs)} documents retrieved")
             
             return state
         
