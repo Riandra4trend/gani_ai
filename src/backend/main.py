@@ -98,8 +98,8 @@ async def lifespan(app: FastAPI):
         has_data = await vector_store_service.initialize_vector_store()
         
         # Always load documents from folder on startup
-        logger.info("📚 Loading documents from 'documents' folder...")
-        await load_all_documents_from_folder()
+        # logger.info("📚 Loading documents from 'documents' folder...")
+        # await load_all_documents_from_folder()
         
         # Get final collection info
         collection_info = await vector_store_service.get_collection_info()
@@ -118,39 +118,40 @@ async def lifespan(app: FastAPI):
     logger.info("🔄 Shutting down Indonesian Legal RAG Assistant...")
 
 
-async def load_all_documents_from_folder():
-    """Load all documents from the documents folder."""
-    try:
-        documents_folder = "documents"
-        if not os.path.exists(documents_folder):
-            os.makedirs(documents_folder)
-            logger.info("📁 Created documents folder")
-            return
+# async def load_all_documents_from_folder():
+#     """Load all documents from the documents folder."""
+#     try:
+#         documents_folder = "documents"
+#         if not os.path.exists(documents_folder):
+#             os.makedirs(documents_folder)
+#             logger.info("📁 Created documents folder")
+#             return
 
-        # Get all PDF files
-        pdf_files = [f for f in os.listdir(documents_folder) if f.endswith('.pdf')]
+#         # Get all PDF files
+#         pdf_files = [f for f in os.listdir(documents_folder) if f.endswith('.pdf')]
         
-        if not pdf_files:
-            logger.warning("⚠️ No PDF files found in documents folder")
-            return
+#         if not pdf_files:
+#             logger.warning("⚠️ No PDF files found in documents folder")
+#             return
 
-        logger.info(f"📁 Found {len(pdf_files)} PDF files to process")
+#         logger.info(f"📁 Found {len(pdf_files)} PDF files to process")
         
-        # Process documents
-        documents = await document_processor.load_documents_from_folder(documents_folder)
+#         # Process documents
+#         documents = await document_processor.load_documents_from_folder()
+
         
-        if documents:
-            logger.info(f"🔄 Adding {len(documents)} document chunks to vector store...")
-            result = await vector_store_service.add_documents(documents)
+#         if documents:
+#             logger.info(f"🔄 Adding {len(documents)} document chunks to vector store...")
+#             result = await vector_store_service.add_documents(documents)
             
-            app_metrics["documents_processed"] = result.get('documents_processed', len(pdf_files))
+#             app_metrics["documents_processed"] = result.get('documents_processed', len(pdf_files))
             
-            logger.info(f"✅ Successfully loaded {result['documents_added']} document chunks from {len(pdf_files)} files")
-        else:
-            logger.warning("⚠️ No documents were processed successfully")
+#             logger.info(f"✅ Successfully loaded {result['documents_added']} document chunks from {len(pdf_files)} files")
+#         else:
+#             logger.warning("⚠️ No documents were processed successfully")
             
-    except Exception as e:
-        logger.error(f"❌ Failed to load documents: {e}")
+#     except Exception as e:
+#         logger.error(f"❌ Failed to load documents: {e}")
 
 
 # Create FastAPI app
@@ -164,7 +165,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -439,7 +440,7 @@ async def reprocess_all_documents():
         app_metrics["total_documents"] = 0
         
         # Load documents
-        await load_all_documents_from_folder()
+        # await load_all_documents_from_folder()
         
         logger.info("✅ Document reprocessing complete")
         
