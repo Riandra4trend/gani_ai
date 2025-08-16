@@ -10,7 +10,7 @@ import logging
 
 from langchain_chroma import Chroma
 from langchain.docstore.document import Document
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_ollama import OllamaEmbeddings   # ✅ fixed import
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
@@ -38,9 +38,9 @@ class VectorStoreService:
         try:
             self.embeddings = OllamaEmbeddings(
                 base_url="http://localhost:11434",
-                model="mxbai-embed-large"
+                model=settings.embedding_model   # ✅ now uses config
             )
-            logger.info("✓ Initialized Ollama embeddings with model: mxbai-embed-large")
+            logger.info(f"✓ Initialized Ollama embeddings with model: {settings.embedding_model}")
         except Exception as e:
             logger.error(f"Failed to initialize Ollama embeddings: {e}")
             raise
@@ -58,8 +58,9 @@ class VectorStoreService:
                 persist_directory=persist_directory
             )
             
-            # Jika direktori kosong, berarti perlu load data awal
+            # If directory empty or reload requested
             if force_reload or not os.listdir(persist_directory):
+                logger.warning("Vector store is empty, documents must be added.")
                 return False
             else:
                 await self._initialize_retriever()
@@ -80,14 +81,12 @@ class VectorStoreService:
                 }
             )
             
-            # Inisialisasi CrossEncoderReranker TANPA top_k (Pydantic v2 strict)
             if not self.reranker:
                 cross_encoder = HuggingFaceCrossEncoder(
                     model_name="cross-encoder/ms-marco-MiniLM-L-6-v2"
                 )
                 self.reranker = CrossEncoderReranker(model=cross_encoder)
             
-            # Contextual compression retriever (reranker akan memangkas hasil)
             self.retriever = ContextualCompressionRetriever(
                 base_compressor=self.reranker,
                 base_retriever=base_retriever
@@ -147,8 +146,6 @@ class VectorStoreService:
             
             k = k or settings.retrieval_k
 
-            # ContextualCompressionRetriever saat ini tidak menerima filter langsung,
-            # jadi gunakan retriever dasar jika filter dipakai.
             if filter_metadata:
                 base_retriever = self.vector_store.as_retriever(
                     search_type="similarity",
@@ -195,7 +192,7 @@ class VectorStoreService:
             
             collection = self.vector_store._collection
             count = collection.count()
-            sample = collection.peek(limit=5)  # dict with ids, metadatas, documents, embeddings?
+            sample = collection.peek(limit=5)
             sample_keys = []
             if sample and sample.get("metadatas"):
                 first_meta = sample["metadatas"][0] or {}

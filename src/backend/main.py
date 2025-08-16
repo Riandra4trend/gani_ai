@@ -1,3 +1,4 @@
+# main.py code - FIXED VERSION
 import asyncio
 import os
 import time
@@ -49,6 +50,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     include_sources: Optional[bool] = True
+    chat_history: Optional[List[Dict[str, Any]]] = None  # Add this field for context
 
 class ChatResponse(BaseModel):
     session_id: str
@@ -118,42 +120,6 @@ async def lifespan(app: FastAPI):
     logger.info("🔄 Shutting down Indonesian Legal RAG Assistant...")
 
 
-# async def load_all_documents_from_folder():
-#     """Load all documents from the documents folder."""
-#     try:
-#         documents_folder = "documents"
-#         if not os.path.exists(documents_folder):
-#             os.makedirs(documents_folder)
-#             logger.info("📁 Created documents folder")
-#             return
-
-#         # Get all PDF files
-#         pdf_files = [f for f in os.listdir(documents_folder) if f.endswith('.pdf')]
-        
-#         if not pdf_files:
-#             logger.warning("⚠️ No PDF files found in documents folder")
-#             return
-
-#         logger.info(f"📁 Found {len(pdf_files)} PDF files to process")
-        
-#         # Process documents
-#         documents = await document_processor.load_documents_from_folder()
-
-        
-#         if documents:
-#             logger.info(f"🔄 Adding {len(documents)} document chunks to vector store...")
-#             result = await vector_store_service.add_documents(documents)
-            
-#             app_metrics["documents_processed"] = result.get('documents_processed', len(pdf_files))
-            
-#             logger.info(f"✅ Successfully loaded {result['documents_added']} document chunks from {len(pdf_files)} files")
-#         else:
-#             logger.warning("⚠️ No documents were processed successfully")
-            
-#     except Exception as e:
-#         logger.error(f"❌ Failed to load documents: {e}")
-
-
 # Create FastAPI app
 app = FastAPI(
     title="Indonesian Legal RAG Assistant",
@@ -183,10 +149,10 @@ async def global_exception_handler(request, exc):
     )
 
 
-# Main chat endpoint - ChatGPT-like interface
+# Main chat endpoint - ChatGPT-like interface with context support
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Main chat endpoint for ChatGPT-like interface."""
+    """Main chat endpoint for ChatGPT-like interface with context support."""
     start_time = time.time()
     app_metrics["total_chats"] += 1
     
@@ -208,6 +174,25 @@ async def chat(request: ChatRequest):
         
         logger.info(f"💬 Processing chat: {request.message[:100]}... (Session: {session_id[:8]})")
         
+        # Prepare chat history for context-aware processing
+        chat_history = []
+        
+        # Use provided chat_history from request if available
+        if request.chat_history and len(request.chat_history) > 0:
+            chat_history = request.chat_history
+        # Otherwise, use session messages (exclude current message)
+        elif len(chat_sessions[session_id]) > 1:
+            # Convert session messages to the format expected by RAG agents
+            chat_history = [
+                {
+                    "id": f"msg_{i}",
+                    "content": msg["content"],
+                    "role": msg["role"],
+                    "timestamp": msg["timestamp"].isoformat() if isinstance(msg["timestamp"], datetime) else msg["timestamp"]
+                }
+                for i, msg in enumerate(chat_sessions[session_id][:-1])  # Exclude current message
+            ]
+        
         # Create query request for RAG system
         from models import QueryRequest
         query_request = QueryRequest(
@@ -216,13 +201,35 @@ async def chat(request: ChatRequest):
             max_results=5
         )
         
-        # Process through RAG system
-        rag_response = await rag_agents.process_query(query_request)
+        # Use context-aware processing if chat history exists
+        if chat_history and len(chat_history) > 0:
+            logger.info(f"🔄 Using context-aware processing with {len(chat_history)} previous messages")
+            try:
+                # Check if process_query_with_context method exists
+                if hasattr(rag_agents, 'process_query_with_context'):
+                    rag_response = await rag_agents.process_query_with_context(
+                        request=query_request,
+                        chat_id=session_id,
+                        chat_history=chat_history
+                    )
+                else:
+                    logger.warning("⚠️ Context-aware processing not available, falling back to standard processing")
+                    rag_response = await rag_agents.process_query(query_request)
+            except Exception as context_error:
+                logger.warning(f"⚠️ Context-aware processing failed: {context_error}, falling back to standard processing")
+                rag_response = await rag_agents.process_query(query_request)
+        else:
+            # Use standard processing for first message or when no context
+            logger.info("🔄 Using standard processing for new conversation")
+            rag_response = await rag_agents.process_query(query_request)
+        
+        # FIXED: Access the correct attribute - use 'answer' instead of 'response'
+        assistant_response_content = rag_response.answer  # ✅ Fixed: was rag_response.response
         
         # Add assistant response to session
         assistant_message = ChatMessage(
             role="assistant",
-            content=rag_response.response,
+            content=assistant_response_content,
             timestamp=datetime.now()
         )
         chat_sessions[session_id].append(assistant_message.dict())
@@ -234,10 +241,39 @@ async def chat(request: ChatRequest):
         processing_time = time.time() - start_time
         app_metrics["successful_responses"] += 1
         
+        # FIXED: Prepare sources properly
+        formatted_sources = []
+        if request.include_sources and rag_response.sources:
+            for doc in rag_response.sources:
+                try:
+                    # Handle different document formats
+                    if hasattr(doc, 'dict'):
+                        # If it's a Pydantic model
+                        source = doc.dict()
+                    elif hasattr(doc, '__dict__'):
+                        # If it's a regular object with attributes
+                        source = {
+                            "content": getattr(doc, 'content', getattr(doc, 'page_content', str(doc))),
+                            "metadata": getattr(doc, 'metadata', {})
+                        }
+                    elif isinstance(doc, dict):
+                        # If it's already a dict
+                        source = doc
+                    else:
+                        # Fallback for unknown types
+                        source = {
+                            "content": str(doc),
+                            "metadata": {}
+                        }
+                    formatted_sources.append(source)
+                except Exception as source_error:
+                    logger.warning(f"Failed to format source: {source_error}")
+                    continue
+        
         response = ChatResponse(
             session_id=session_id,
-            response=rag_response.response,
-            sources=rag_response.sources if request.include_sources else [],
+            response=assistant_response_content,  # ✅ Fixed: using the correct variable
+            sources=formatted_sources,  # ✅ Fixed: using properly formatted sources
             timestamp=datetime.now(),
             processing_time=processing_time
         )
@@ -248,6 +284,16 @@ async def chat(request: ChatRequest):
     except Exception as e:
         app_metrics["failed_responses"] += 1
         logger.error(f"❌ Chat processing failed: {e}")
+        
+        # Still add error message to session for continuity
+        if 'session_id' in locals() and session_id in chat_sessions:
+            error_message = ChatMessage(
+                role="assistant", 
+                content=f"Maaf, terjadi kesalahan: {str(e)}",
+                timestamp=datetime.now()
+            )
+            chat_sessions[session_id].append(error_message.dict())
+        
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -278,6 +324,59 @@ async def get_chat_history(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Clear chat context endpoint
+@app.delete("/api/chat/{session_id}")
+async def clear_chat_context(session_id: str):
+    """Clear chat context for a specific session."""
+    try:
+        # Clear from in-memory storage
+        if session_id in chat_sessions:
+            del chat_sessions[session_id]
+        
+        # Clear from RAG agents context manager if method exists
+        if hasattr(rag_agents, 'clear_chat_context'):
+            rag_agents.clear_chat_context(session_id)
+        
+        logger.info(f"🗑️ Cleared context for session {session_id}")
+        
+        return {"message": f"Chat context cleared for session {session_id}"}
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to clear chat context: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Get context statistics endpoint
+@app.get("/api/chat/stats")
+async def get_chat_stats():
+    """Get chat context statistics."""
+    try:
+        # Get stats from RAG agents if method exists
+        context_stats = {}
+        if hasattr(rag_agents, 'get_context_stats'):
+            context_stats = rag_agents.get_context_stats()
+        
+        # Add session storage stats
+        session_stats = {
+            "active_sessions": len(chat_sessions),
+            "total_messages": sum(len(messages) for messages in chat_sessions.values()),
+            "average_session_length": (
+                sum(len(messages) for messages in chat_sessions.values()) / len(chat_sessions)
+                if len(chat_sessions) > 0 else 0
+            )
+        }
+        
+        return {
+            "session_storage": session_stats,
+            "context_manager": context_stats,
+            "timestamp": datetime.now()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get chat stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Document upload endpoint
 @app.post("/api/upload", response_model=DocumentUploadResponse)
 async def upload_document(
@@ -298,12 +397,16 @@ async def upload_document(
         file_content = await file.read()
         
         # Process document in background
-        background_tasks.add_task(
-            process_uploaded_document,
-            file_content,
-            file.filename,
-            document_id
-        )
+        if background_tasks:
+            background_tasks.add_task(
+                process_uploaded_document,
+                file_content,
+                file.filename,
+                document_id
+            )
+        else:
+            # Process immediately if no background tasks available
+            await process_uploaded_document(file_content, file.filename, document_id)
         
         return DocumentUploadResponse(
             document_id=document_id,
@@ -423,7 +526,10 @@ async def reprocess_documents(background_tasks: BackgroundTasks):
         await vector_store_service.clear_collection()
         
         # Reprocess in background
-        background_tasks.add_task(reprocess_all_documents)
+        if background_tasks:
+            background_tasks.add_task(reprocess_all_documents)
+        else:
+            await reprocess_all_documents()
         
         return {"message": "Document reprocessing started", "status": "processing"}
         
@@ -446,6 +552,31 @@ async def reprocess_all_documents():
         
     except Exception as e:
         logger.error(f"❌ Document reprocessing failed: {e}")
+
+
+# Additional endpoint for bulk operations (optional)
+@app.get("/api/sessions")
+async def get_active_sessions():
+    """Get list of active chat sessions."""
+    try:
+        sessions_info = []
+        for session_id, messages in chat_sessions.items():
+            if messages:
+                sessions_info.append({
+                    "session_id": session_id,
+                    "message_count": len(messages),
+                    "last_updated": messages[-1].get("timestamp", datetime.now()),
+                    "created_at": messages[0].get("timestamp", datetime.now())
+                })
+        
+        return {
+            "active_sessions": len(sessions_info),
+            "sessions": sessions_info[:10],  # Return first 10 for performance
+            "total_messages": sum(len(messages) for messages in chat_sessions.values())
+        }
+    except Exception as e:
+        logger.error(f"❌ Failed to get sessions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

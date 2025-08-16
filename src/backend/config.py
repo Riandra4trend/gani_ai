@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     
     # Vector Store Configuration
     vector_store_path: str = "./data/chroma_db"
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_model: str = "mxbai-embed-large"   # ✅ now consistent with vector_store
     collection_name: str = "indonesian_law_docs"
     
     # Document Processing

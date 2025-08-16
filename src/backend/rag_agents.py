@@ -1,5 +1,6 @@
 """
 LangGraph Multi-Agent RAG System for Indonesian Legal Assistant with In-Memory Context.
+Fixed version addressing hybrid_search and response attribute errors.
 """
 
 import asyncio
@@ -11,7 +12,7 @@ from collections import deque
 from dataclasses import dataclass, asdict
 import hashlib
 
-from langgraph.graph import Graph, END
+from langgraph.graph import StateGraph, END
 from langchain_google_genai import GoogleGenerativeAI
 from langchain.schema import BaseMessage, HumanMessage, SystemMessage, AIMessage
 
@@ -121,7 +122,7 @@ class LegalRAGAgents:
     
     def __init__(self):
         self.llm = GoogleGenerativeAI(
-            model="gemini-1.5-pro",
+            model="gemini-1.5-flash",
             temperature=settings.temperature,
             max_tokens=settings.max_tokens,
             google_api_key=settings.gemini_api_key
@@ -136,8 +137,8 @@ class LegalRAGAgents:
     def _build_agent_graph(self):
         """Build the LangGraph multi-agent workflow."""
         
-        # Create workflow graph
-        workflow = Graph()
+        # Create StateGraph workflow
+        workflow = StateGraph(AgentState)
         
         # Add nodes
         workflow.add_node("context_analyzer", self.analyze_context)
@@ -176,6 +177,59 @@ class LegalRAGAgents:
         self.graph = workflow.compile()
         
         logger.info("✓ Built multi-agent RAG workflow with context management")
+    
+    async def process_query(self, request: QueryRequest) -> QueryResponse:
+        """Process a legal query without conversation context (standard processing)."""
+        start_time = datetime.now()
+        
+        try:
+            # Generate a temporary chat_id for this single query
+            temp_chat_id = f"temp_{int(start_time.timestamp())}"
+            
+            logger.info(f"🔄 Processing query without context: {request.query[:100]}...")
+            
+            # Initialize agent state without context
+            initial_state = AgentState(
+                query=request.query,
+                retrieved_docs=[],
+                iteration_count=0,
+                chat_id=temp_chat_id
+            )
+            
+            # Run the multi-agent workflow
+            final_state = await self._run_workflow(initial_state)
+            
+            # Calculate processing time
+            processing_time = (datetime.now() - start_time).total_seconds()
+            
+            # Create response
+            response = QueryResponse(
+                query=request.query,
+                answer=final_state.final_answer or "Maaf, tidak dapat memberikan jawaban yang memadai.",
+                sources=final_state.sources or [],
+                confidence_score=final_state.confidence_score or 0.0,
+                processing_time=processing_time,
+                hyde_info=final_state.hyde_query,
+                query_intent=None
+            )
+            
+            # Clean up temporary chat context
+            self.context_manager.clear_chat_history(temp_chat_id)
+            
+            logger.info(f"✓ Processed query without context in {processing_time:.2f}s")
+            return response
+        
+        except Exception as e:
+            logger.error(f"Query processing failed: {e}")
+            processing_time = (datetime.now() - start_time).total_seconds()
+            
+            return QueryResponse(
+                query=request.query,
+                answer=f"Maaf, terjadi kesalahan dalam memproses pertanyaan Anda: {str(e)}",
+                sources=[],
+                confidence_score=0.0,
+                processing_time=processing_time
+            )
     
     async def process_query_with_context(self, request: QueryRequest, chat_id: str, 
                                        chat_history: List[Dict[str, Any]] = None) -> QueryResponse:
@@ -224,8 +278,8 @@ class LegalRAGAgents:
             response = QueryResponse(
                 query=request.query,
                 answer=final_state.final_answer or "Maaf, tidak dapat memberikan jawaban yang memadai.",
-                sources=final_state.sources,
-                confidence_score=final_state.confidence_score,
+                sources=final_state.sources or [],
+                confidence_score=final_state.confidence_score or 0.0,
                 processing_time=processing_time,
                 hyde_info=final_state.hyde_query,
                 query_intent=None
@@ -249,43 +303,65 @@ class LegalRAGAgents:
     def _update_chat_history(self, chat_id: str, chat_history: List[Dict[str, Any]]) -> None:
         """Update internal chat history from external format."""
         for msg_data in chat_history:
-            message = ChatMessage(
-                id=msg_data.get("id", f"msg_{int(datetime.now().timestamp())}"),
-                content=msg_data.get("content", ""),
-                role=msg_data.get("role", "user"),
-                timestamp=datetime.fromisoformat(msg_data.get("timestamp", datetime.now().isoformat()))
-            )
-            # Only add if not already in history (to avoid duplicates)
-            recent_messages = self.context_manager.get_recent_messages(chat_id, 5)
-            if not any(m.id == message.id for m in recent_messages):
-                self.context_manager.add_message(chat_id, message)
+            try:
+                # Handle different timestamp formats
+                timestamp_str = msg_data.get("timestamp", datetime.now().isoformat())
+                if isinstance(timestamp_str, str):
+                    # Try to parse ISO format timestamp
+                    try:
+                        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    except ValueError:
+                        timestamp = datetime.now()
+                else:
+                    timestamp = datetime.now()
+                
+                message = ChatMessage(
+                    id=msg_data.get("id", f"msg_{int(datetime.now().timestamp())}"),
+                    content=msg_data.get("content", ""),
+                    role=msg_data.get("role", "user"),
+                    timestamp=timestamp
+                )
+                
+                # Only add if not already in history (to avoid duplicates)
+                recent_messages = self.context_manager.get_recent_messages(chat_id, 5)
+                if not any(m.id == message.id for m in recent_messages):
+                    self.context_manager.add_message(chat_id, message)
+            except Exception as e:
+                logger.warning(f"Failed to process chat history message: {e}")
+                continue
     
     async def _run_workflow(self, initial_state: AgentState) -> AgentState:
-        """Run the multi-agent workflow."""
+        """Run the multi-agent workflow asynchronously."""
         try:
-            # Execute the graph workflow
-            result = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self.graph.invoke(initial_state.dict())
-            )
+            logger.info("Starting workflow execution...")
             
-            # Convert back to AgentState
-            final_state = AgentState(**result)
+            # Use async invoke for proper async execution
+            result = await self.graph.ainvoke(initial_state)
+            
+            # Convert result to AgentState if needed
+            if isinstance(result, dict):
+                final_state = AgentState(**result)
+            else:
+                final_state = result
+                
+            logger.info("Workflow execution completed successfully")
             return final_state
         
         except Exception as e:
             logger.error(f"Workflow execution failed: {e}")
+            # Return a failed state
             initial_state.final_answer = f"Terjadi kesalahan dalam pemrosesan: {str(e)}"
             initial_state.confidence_score = 0.0
+            initial_state.sources = []
             return initial_state
     
-    async def analyze_context(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def analyze_context(self, state: AgentState) -> AgentState:
         """Analyze conversation context and generate summary."""
         try:
-            chat_id = state.get("chat_id")
+            chat_id = state.chat_id
             if not chat_id:
                 logger.warning("No chat_id provided for context analysis")
-                state["conversation_context"] = None
+                state.conversation_context = None
                 return state
             
             # Get recent messages
@@ -294,19 +370,19 @@ class LegalRAGAgents:
             )
             
             if len(recent_messages) <= 1:  # Only current message
-                state["conversation_context"] = None
+                state.conversation_context = None
                 return state
             
             # Generate context summary
             context_summary = await self._generate_context_summary(recent_messages)
-            state["conversation_context"] = context_summary
+            state.conversation_context = context_summary
             
             logger.info("Generated conversation context")
             return state
         
         except Exception as e:
             logger.error(f"Context analysis failed: {e}")
-            state["conversation_context"] = None
+            state.conversation_context = None
             return state
     
     async def _generate_context_summary(self, messages: List[ChatMessage]) -> Dict[str, Any]:
@@ -373,11 +449,11 @@ Berikan analisis dalam format JSON yang diminta."""
                 "context_relevance": "Konteks tidak tersedia"
             }
     
-    async def analyze_query(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def analyze_query(self, state: AgentState) -> AgentState:
         """Analyze and classify the user query with context."""
         try:
-            query = state["query"]
-            conversation_context = state.get("conversation_context")
+            query = state.query
+            conversation_context = state.conversation_context
             
             # Enhanced analysis with context
             analysis = {
@@ -391,20 +467,21 @@ Berikan analisis dalam format JSON yang diminta."""
                 analysis["context_topics"] = conversation_context.get("topics", [])
                 analysis["user_intent"] = conversation_context.get("user_intent", "")
             
-            state["query_analysis"] = analysis
+            state.query_analysis = analysis
             logger.info(f"Analyzed query with context: {query[:50]}...")
             return state
         
         except Exception as e:
             logger.error(f"Query analysis failed: {e}")
+            state.query_analysis = {"type": "legal_question", "complexity": "medium"}
             return state
     
-    async def generate_hyde(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_hyde(self, state: AgentState) -> AgentState:
         """Generate HYDE query if beneficial."""
         try:
-            query = state["query"]
-            analysis = state.get("query_analysis", {})
-            conversation_context = state.get("conversation_context")
+            query = state.query
+            analysis = state.query_analysis or {}
+            conversation_context = state.conversation_context
             
             if analysis.get("requires_hyde", True) and settings.hyde_enabled:
                 # Enhanced HYDE with context
@@ -414,29 +491,29 @@ Berikan analisis dalam format JSON yang diminta."""
                 
                 enhanced_query = query + context_info
                 hyde_query = await hyde_service.generate_hypothetical_documents(enhanced_query)
-                state["hyde_query"] = hyde_query.dict()
+                state.hyde_query = hyde_query if hyde_query else None
                 logger.info("Generated context-aware HYDE query")
             else:
-                state["hyde_query"] = None
+                state.hyde_query = None
                 logger.info("Skipped HYDE generation")
             
             return state
         
         except Exception as e:
             logger.error(f"HYDE generation failed: {e}")
-            state["hyde_query"] = None
+            state.hyde_query = None
             return state
     
-    async def retrieve_documents(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def retrieve_documents(self, state: AgentState) -> AgentState:
         """Retrieve relevant documents from vector store."""
         try:
-            query = state["query"]
-            hyde_info = state.get("hyde_query")
-            conversation_context = state.get("conversation_context")
+            query = state.query
+            hyde_info = state.hyde_query
+            conversation_context = state.conversation_context
             
             # Use enhanced query if HYDE was generated
-            if hyde_info and hyde_info.get("enhanced_query"):
-                search_query = hyde_info["enhanced_query"]
+            if hyde_info and hasattr(hyde_info, 'enhanced_query') and hyde_info.enhanced_query:
+                search_query = hyde_info.enhanced_query
                 logger.info("Using HYDE-enhanced query for retrieval")
             else:
                 search_query = query
@@ -445,29 +522,52 @@ Berikan analisis dalam format JSON yang diminta."""
                     context_terms = " ".join(conversation_context["topics"])
                     search_query = f"{query} {context_terms}"
             
-            # Retrieve documents using hybrid search
-            retrieved_docs = await vector_store_service.hybrid_search(
-                search_query,
-                k=settings.retrieval_k
-            )
+            # FIXED: Check for available search methods and use appropriate one
+            retrieved_docs = []
             
-            state["retrieved_docs"] = [doc.dict() for doc in retrieved_docs]
+            # Try hybrid_search first, fallback to other methods
+            if hasattr(vector_store_service, 'hybrid_search'):
+                retrieved_docs = await vector_store_service.hybrid_search(
+                    search_query,
+                    k=settings.retrieval_k
+                )
+            elif hasattr(vector_store_service, 'semantic_search'):
+                retrieved_docs = await vector_store_service.semantic_search(
+                    search_query,
+                    k=settings.retrieval_k
+                )
+            elif hasattr(vector_store_service, 'search'):
+                retrieved_docs = await vector_store_service.search(
+                    search_query,
+                    k=settings.retrieval_k
+                )
+            elif hasattr(vector_store_service, 'similarity_search'):
+                # For synchronous similarity_search, wrap in executor
+                retrieved_docs = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: vector_store_service.similarity_search(search_query, k=settings.retrieval_k)
+                )
+            else:
+                logger.error("No suitable search method found in vector_store_service")
+                retrieved_docs = []
+            
+            state.retrieved_docs = retrieved_docs
             logger.info(f"Retrieved {len(retrieved_docs)} documents with context")
             
             return state
         
         except Exception as e:
             logger.error(f"Document retrieval failed: {e}")
-            state["retrieved_docs"] = []
+            state.retrieved_docs = []
             return state
     
-    async def generate_answer(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_answer(self, state: AgentState) -> AgentState:
         """Generate answer based on retrieved documents and context."""
         try:
-            query = state["query"]
-            retrieved_docs = state.get("retrieved_docs", [])
-            conversation_context = state.get("conversation_context")
-            iteration = state.get("iteration_count", 0)
+            query = state.query
+            retrieved_docs = state.retrieved_docs or []
+            conversation_context = state.conversation_context
+            iteration = state.iteration_count
             
             # Prepare context from retrieved documents
             document_context = self._prepare_context(retrieved_docs)
@@ -478,27 +578,27 @@ Berikan analisis dalam format JSON yang diminta."""
             )
             
             if iteration == 0:
-                state["initial_answer"] = answer
+                state.initial_answer = answer
             else:
-                state["reviewed_answer"] = answer
+                state.reviewed_answer = answer
             
-            state["current_answer"] = answer
+            state.current_answer = answer
             logger.info("Generated context-aware legal answer")
             
             return state
         
         except Exception as e:
             logger.error(f"Answer generation failed: {e}")
-            state["current_answer"] = "Maaf, tidak dapat menghasilkan jawaban."
+            state.current_answer = "Maaf, tidak dapat menghasilkan jawaban."
             return state
     
-    async def review_answer(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def review_answer(self, state: AgentState) -> AgentState:
         """Review the generated answer for accuracy and completeness."""
         try:
-            current_answer = state.get("current_answer", "")
-            retrieved_docs = state.get("retrieved_docs", [])
-            query = state["query"]
-            conversation_context = state.get("conversation_context")
+            current_answer = state.current_answer or ""
+            retrieved_docs = state.retrieved_docs or []
+            query = state.query
+            conversation_context = state.conversation_context
             
             # Prepare review context
             context = self._prepare_context(retrieved_docs)
@@ -506,23 +606,23 @@ Berikan analisis dalam format JSON yang diminta."""
             # Review the answer with conversation context
             review_result = await self._review_legal_answer(query, current_answer, context)
             
-            state["review_result"] = review_result
-            state["feedback"] = review_result.get("feedback", "")
+            state.review_result = review_result
+            state.feedback = review_result.get("feedback", "")
             
             logger.info("Completed context-aware answer review")
             return state
         
         except Exception as e:
             logger.error(f"Answer review failed: {e}")
-            state["review_result"] = {"score": 5, "feedback": "Review tidak tersedia"}
+            state.review_result = {"score": 5, "feedback": "Review tidak tersedia"}
             return state
     
-    async def quality_control(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def quality_control(self, state: AgentState) -> AgentState:
         """Final quality control and decision making."""
         try:
-            current_answer = state.get("current_answer", "")
-            review_result = state.get("review_result", {})
-            iteration = state.get("iteration_count", 0)
+            current_answer = state.current_answer or ""
+            review_result = state.review_result or {}
+            iteration = state.iteration_count
             
             review_score = review_result.get("score", 5)
             
@@ -532,38 +632,38 @@ Berikan analisis dalam format JSON yang diminta."""
             # Decide if answer is acceptable or needs iteration
             if review_score >= 7 or iteration >= settings.max_iterations - 1:
                 # Accept the answer and update context
-                state["final_answer"] = current_answer
-                state["confidence_score"] = confidence
-                state["should_continue"] = False
-                state["update_context"] = True
+                state.final_answer = current_answer
+                state.confidence_score = confidence
+                state.should_continue = False
+                state.update_context = True
                 
                 # Prepare sources
-                retrieved_docs = state.get("retrieved_docs", [])
-                state["sources"] = retrieved_docs
+                state.sources = state.retrieved_docs or []
                 
                 logger.info(f"Final answer accepted with score {review_score}")
             else:
                 # Iterate for improvement
-                state["iteration_count"] = iteration + 1
-                state["should_continue"] = True
-                state["update_context"] = False
+                state.iteration_count = iteration + 1
+                state.should_continue = True
+                state.update_context = False
                 logger.info(f"Answer needs improvement, iteration {iteration + 1}")
             
             return state
         
         except Exception as e:
             logger.error(f"Quality control failed: {e}")
-            state["final_answer"] = state.get("current_answer", "Terjadi kesalahan")
-            state["confidence_score"] = 0.3
-            state["should_continue"] = False
-            state["update_context"] = True
+            state.final_answer = state.current_answer or "Terjadi kesalahan"
+            state.confidence_score = 0.3
+            state.should_continue = False
+            state.update_context = True
             return state
     
-    async def update_context(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_context(self, state: AgentState) -> AgentState:
         """Update conversation context after successful answer generation."""
         try:
-            chat_id = state.get("chat_id")
-            if not chat_id:
+            chat_id = state.chat_id
+            if not chat_id or chat_id.startswith("temp_"):
+                # Skip context update for temporary chats
                 return state
             
             # Get current conversation context
@@ -593,24 +693,37 @@ Berikan analisis dalam format JSON yang diminta."""
             logger.error(f"Context update failed: {e}")
             return state
     
-    def should_continue(self, state: Dict[str, Any]) -> str:
+    def should_continue(self, state: AgentState) -> str:
         """Decide whether to continue iteration or end."""
-        if state.get("should_continue", False):
+        if state.should_continue:
             return "continue"
-        elif state.get("update_context", False):
+        elif state.update_context:
             return "update_context"
         else:
             return "update_context"  # Always update context at the end
     
-    def _prepare_context(self, retrieved_docs: List[Dict[str, Any]]) -> str:
+    def _prepare_context(self, retrieved_docs: List[RetrievedDocument]) -> str:
         """Prepare context from retrieved documents."""
         if not retrieved_docs:
             return "Tidak ada dokumen relevan ditemukan."
         
         context_parts = []
         for i, doc in enumerate(retrieved_docs[:5], 1):  # Top 5 documents
-            content = doc.get("content", "")
-            metadata = doc.get("metadata", {})
+            # Handle different document formats
+            content = ""
+            metadata = {}
+            
+            if hasattr(doc, 'content'):
+                content = doc.content
+            elif hasattr(doc, 'page_content'):
+                content = doc.page_content
+            elif isinstance(doc, dict):
+                content = doc.get('content', doc.get('page_content', ''))
+            
+            if hasattr(doc, 'metadata'):
+                metadata = doc.metadata
+            elif isinstance(doc, dict):
+                metadata = doc.get('metadata', {})
             
             source_info = ""
             if metadata.get("title"):
