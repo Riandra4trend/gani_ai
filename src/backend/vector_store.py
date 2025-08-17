@@ -334,7 +334,7 @@ class VectorStoreService:
                     "status": "not_initialized",
                     "document_count": 0,
                     "collection_name": getattr(settings, 'collection_name', 'legal_docs'),
-                    "embedding_model": getattr(settings, 'embedding_model', 'nomic-embed-text'),
+                    "embedding_model": getattr(settings, 'embedding_model', 'mxbai-embed-large'),
                     "vector_store_path": getattr(settings, 'vector_store_path', './chroma_db')
                 }
             
@@ -356,7 +356,7 @@ class VectorStoreService:
                 "status": "initialized",
                 "collection_name": getattr(settings, 'collection_name', 'legal_docs'),
                 "document_count": count,
-                "embedding_model": getattr(settings, 'embedding_model', 'nomic-embed-text'),
+                "embedding_model": getattr(settings, 'embedding_model', 'mxbai-embed-large'),
                 "sample_metadata_keys": sample_metadata_keys,
                 "vector_store_path": getattr(settings, 'vector_store_path', './chroma_db'),
                 "retriever_initialized": self.retriever is not None,
@@ -448,7 +448,7 @@ class VectorStoreService:
         """
         try:
             stats = {
-                "embedding_model": getattr(settings, 'embedding_model', 'nomic-embed-text'),
+                "embedding_model": getattr(settings, 'embedding_model', 'mxbai-embed-large'),
                 "collection_name": getattr(settings, 'collection_name', 'legal_docs'),
                 "vector_store_path": getattr(settings, 'vector_store_path', './chroma_db'),
                 "initialized": self.vector_store is not None,

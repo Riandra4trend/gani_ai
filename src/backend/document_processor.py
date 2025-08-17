@@ -52,7 +52,7 @@ class DocumentProcessor:
     
     def __init__(self, 
                  documents_folder: str = "./documents",
-                 ollama_model: str = "nomic-embed-text",
+                 ollama_model: str = "mxbai-embed-large",
                  chunk_size: int = 1000,
                  chunk_overlap: int = 200):
         """

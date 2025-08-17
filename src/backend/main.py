@@ -593,7 +593,7 @@ async def get_documents_info():
         return {
             "total_documents": collection_info.get("document_count", 0),
             "status": collection_info.get("status", "unknown"),
-            "embedding_model": "nomic-embed-text",
+            "embedding_model": "mxbai-embed-large",
             "last_updated": datetime.now(),
             "processing_stats": processing_stats
         }
