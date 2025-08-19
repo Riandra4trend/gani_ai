@@ -41,7 +41,7 @@ gani_ai/
 
 Before running this application, make sure you have the following installed:
 
-- **Python 3.8+**
+- **Python 3.10**
 - **Node.js 16+**
 - **npm or yarn**
 - **Conda** (recommended for Python environment management)
