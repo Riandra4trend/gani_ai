@@ -1,4 +1,3 @@
-# main.py code - UPDATED VERSION with Smart Document Loading
 import asyncio
 import os
 import time
@@ -291,10 +290,11 @@ async def chat(request: ChatRequest):
             try:
                 # Check if process_query_with_context method exists
                 if hasattr(rag_agents, 'process_query_with_context'):
+                    # FIXED: Pass chat_history properly to initialize AgentState
                     rag_response = await rag_agents.process_query_with_context(
                         request=query_request,
                         chat_id=session_id,
-                        chat_history=chat_history
+                        chat_history=chat_history  # This should be used to set frontend_chat_history
                     )
                 else:
                     logger.warning("⚠️ Context-aware processing not available, falling back to standard processing")
@@ -307,8 +307,8 @@ async def chat(request: ChatRequest):
             logger.info("🔄 Using standard processing for new conversation")
             rag_response = await rag_agents.process_query(query_request)
         
-        # FIXED: Access the correct attribute - use 'answer' instead of 'response'
-        assistant_response_content = rag_response.answer  # ✅ Fixed: was rag_response.response
+        # Access the correct attribute
+        assistant_response_content = rag_response.answer
         
         # Add assistant response to session
         assistant_message = ChatMessage(
@@ -325,7 +325,7 @@ async def chat(request: ChatRequest):
         processing_time = time.time() - start_time
         app_metrics["successful_responses"] += 1
         
-        # FIXED: Prepare sources properly
+        # Prepare sources properly
         formatted_sources = []
         if request.include_sources and rag_response.sources:
             for doc in rag_response.sources:
@@ -356,8 +356,8 @@ async def chat(request: ChatRequest):
         
         response = ChatResponse(
             session_id=session_id,
-            response=assistant_response_content,  # ✅ Fixed: using the correct variable
-            sources=formatted_sources,  # ✅ Fixed: using properly formatted sources
+            response=assistant_response_content,
+            sources=formatted_sources,
             timestamp=datetime.now(),
             processing_time=processing_time
         )

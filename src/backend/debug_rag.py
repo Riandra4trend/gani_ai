@@ -1,4 +1,3 @@
-# debug_rag.py - Script untuk debug RAG system
 import asyncio
 import logging
 from datetime import datetime

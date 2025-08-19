@@ -1,11 +1,10 @@
-"""
-Pydantic models for Indonesian Law RAG AI Assistant.
-"""
-
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+from dataclasses import dataclass, field
 
 
 class DocumentType(str, Enum):
@@ -126,15 +125,26 @@ class AgentState(BaseModel):
     review_result: Optional[Dict[str, Any]] = None
     should_continue: bool = False
     update_context: bool = False
+    generated_answer: Optional[str] = None
+
+    # Frontend chat history and context
+    frontend_chat_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    context_source: Optional[str] = None  # "frontend" or "internal"
     
     # Additional processing fields
     processing_start: Optional[datetime] = Field(default_factory=datetime.now)
     processing_steps: List[str] = Field(default_factory=list)
     error_messages: List[str] = Field(default_factory=list)
+    set_context_sources: List[str] = Field(default_factory=list)
 
     class Config:
         arbitrary_types_allowed = True
 
+    def set_context_source(self, source: str) -> None:
+        """Set the context source for this state."""
+        self.context_source = source
+        if source not in self.set_context_sources:
+            self.set_context_sources.append(source)
 
 class ChatMessage(BaseModel):
     """Chat message model for API responses."""

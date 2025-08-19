@@ -21,7 +21,7 @@ ollama==0.2.1
 # PDF processing and OCR
 PyMuPDF==1.23.24  # Updated from pypdf2 for better performance
 pytesseract==0.3.10
-Pillow==10.0.1
+Pillow==10.4.0
 opencv-python==4.8.1.78
 
 # Indonesian NLP
@@ -37,7 +37,7 @@ aiofiles==23.2.0
 
 # HTTP and requests
 requests==2.31.0
-httpx==0.25.2
+httpx==0.27.2
 
 # Configuration and environment
 python-dotenv==1.0.0
@@ -61,4 +61,4 @@ structlog==23.2.0
 
 # Performance
 uvloop==0.19.0  # For Linux/macOS only
-orjson==3.9.10  # Fast JSON parsing
+orjson>=3.9.12  # Fast JSON parsing

@@ -1,8 +1,3 @@
-"""
-Vector store service using ChromaDB with Ollama embeddings.
-Aligned with main.py and document_processor.py requirements.
-"""
-
 import os
 import asyncio
 from typing import List, Dict, Any, Optional

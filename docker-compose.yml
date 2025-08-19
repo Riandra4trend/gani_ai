@@ -1,0 +1,66 @@
+services:
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+    container_name: gani-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://backend:8000/api
+    depends_on:
+      - backend
+    networks:
+      - gani-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: gani-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - CHROMA_HOST=${CHROMA_HOST:-chroma}
+      - CHROMA_PORT=${CHROMA_PORT:-8001}
+    volumes:
+      - ./src/backend/uploads:/app/uploads
+      - ./src/backend/data:/app/data
+      - ./src/backend/logs:/app/logs
+    depends_on:
+      - ollama
+    networks:
+      - gani-network
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: gani-ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - gani-network
+    restart: unless-stopped
+    command: >
+      bash -c "
+      ollama serve &
+      sleep 10 &&
+      ollama pull mxbai-embed-large &&
+      wait"
+
+volumes:
+  ollama_data:
+    driver: local
+
+networks:
+  gani-network:
+    driver: bridge

@@ -1,27 +1,37 @@
-# Indonesian Legal RAG Assistant Dockerfile
+# Backend Dockerfile (src/backend/Dockerfile)
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies for OpenCV, Tesseract, and other libraries
 RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
+    tesseract-ocr \
+    tesseract-ocr-ind \
+    libgl1-mesa-dri \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy requirements first (for caching)
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade pip & install Python dependencies with extended timeout and faster index
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install --default-timeout=1000 --no-cache-dir -i https://pypi.org/simple -r requirements.txt
+
+# Download NLTK data
+RUN python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords')"
 
 # Copy application code
 COPY . .
 
-# Create data directory for vector store
-RUN mkdir -p ./data/chroma_db
+# Create necessary directories for your local ChromaDB setup
+RUN mkdir -p uploads data/chroma_db logs
 
 # Set environment variables
 ENV PYTHONPATH=/app
@@ -34,5 +44,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the application
-CMD ["python", "main.py"]
+# Command to run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

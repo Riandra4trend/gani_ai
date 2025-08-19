@@ -1,8 +1,3 @@
-"""
-Enhanced Document Processor with OCR, Indonesian NLP Pipeline, and Ollama Embeddings.
-Includes smart document loading that tracks processed files to avoid reprocessing.
-"""
-
 import os
 import io
 import re
