@@ -3,6 +3,8 @@
 ## Overview
 This system is a sophisticated **Retrieval-Augmented Generation (RAG)** application designed specifically for Indonesian legal documents. It combines document processing, vector storage, conversational AI, Advance Context Analyzer and advanced retrieval techniques to provide accurate legal information.
 
+[Watch the video](https://github.com/USER/REPO/raw/main/path/to/video.mp4)
+
 ## Desain System
 
 ### Document Processor to DB Vector
@@ -142,11 +144,11 @@ async def similarity_search_optimized(self, query: str, k: Optional[int] = None)
 ## 3. HYDE Service (`hyde_service.py`)
 # Analisis Sistem HYDE Legal RAG
 
-## 🔮 HYDE Theory Overview
+## HYDE Theory Overview
 
 **HYDE (Hypothetical Document Embeddings)** adalah teknik query expansion yang menggunakan LLM untuk generate dokumen hipotetis yang menjawab query, kemudian menggunakan embedding dokumen hipotetis tersebut untuk mencari dokumen relevan di vector store.
 
-## 🔧 Function-by-Function Analysis
+## Function-by-Function Analysis
 
 ### 1. **Legal Query Analyzer** (`_analyze_legal_query`)
 
@@ -340,7 +342,7 @@ HydeQuery(
 
 ---
 
-## 🎯 Best Practices Implementation
+## Best Practices Implementation
 
 ### 1. **Intelligent HYDE Activation**
 ```python
@@ -388,7 +390,7 @@ Generation → Parsing → Validation → Fallback (if needed)
 - **Retry Strategy** dengan tenacity decorator
 - **Graceful Degradation**: return original query jika enhancement gagal
 
-## 📊 HYDE Effectiveness Factors
+## HYDE Effectiveness Factors
 
 ### **High Effectiveness** (confidence > 0.8):
 - Query complex tanpa entitas spesifik
@@ -408,7 +410,7 @@ Generation → Parsing → Validation → Fallback (if needed)
 
 ---
 
-## 🧪 Advanced HYDE Features
+## Advanced HYDE Features
 
 ### **Adaptive HYDE**
 ```python
@@ -432,7 +434,7 @@ perspectives = [
 
 ---
 
-## 🏆 System Strengths
+## System Strengths
 
 1. **Domain-Aware HYDE**: Specialized untuk hukum Indonesia
 2. **Multi-Strategy Enhancement**: Multiple query enhancement approaches
