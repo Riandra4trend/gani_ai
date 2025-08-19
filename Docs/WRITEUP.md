@@ -3,7 +3,7 @@
 ## Overview
 This system is a sophisticated **Retrieval-Augmented Generation (RAG)** application designed specifically for Indonesian legal documents. It combines document processing, vector storage, conversational AI, Advance Context Analyzer and advanced retrieval techniques to provide accurate legal information.
 
-[Watch the video]([https://github.com/USER/REPO/raw/main/path/to/video.mp4](https://drive.google.com/file/d/1OLYzd2LCwjkSy39JVjcpEK4dBrkqvrjE/view?usp=sharing))
+[Watch the video]([https://drive.google.com/file/d/1OLYzd2LCwjkSy39JVjcpEK4dBrkqvrjE/view?usp=sharing])
 
 ## Desain System
 
