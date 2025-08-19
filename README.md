@@ -1,504 +1,233 @@
-# Indonesian Legal RAG Assistant
+# Gani AI
 
-A production-ready AI Assistant with Retrieval-Augmented Generation (RAG) for Indonesian Compliance Law, built with LangChain, LangGraph, and Google Gemini API.
-
-## 🚀 Features
-
-### Core Capabilities
-- **Hybrid RAG System**: Combines semantic and keyword search using ChromaDB and FastEmbed
-- **Multi-Agent Architecture**: LangGraph-powered agent workflow with review and quality control
-- **HYDE Enhancement**: Hypothetical Document Embeddings for improved retrieval accuracy
-- **Document Processing**: Support for PDF, HTML, and text documents with intelligent chunking
-- **Production-Ready API**: FastAPI-based REST API with comprehensive error handling
-
-### Advanced Features
-- **Adaptive HYDE**: Intelligent application based on retrieval quality
-- **Multi-Perspective Analysis**: Legal analysis from multiple viewpoints
-- **Real-time Document Upload**: API endpoints for adding new legal documents
-- **Comprehensive Monitoring**: Health checks, metrics, and logging
-- **Docker Support**: Containerized deployment with multi-service setup
+A full-stack AI application with a Python FastAPI backend and a modern frontend interface.
 
 ## 📋 Table of Contents
-
+- [Overview](#overview)
+- [Project Structure](#project-structure)
+- [Prerequisites](#prerequisites)
 - [Installation](#installation)
-- [Quick Start](#quick-start)
 - [Configuration](#configuration)
+- [Running the Application](#running-the-application)
 - [API Documentation](#api-documentation)
-- [Architecture](#architecture)
-- [Development](#development)
-- [Production Deployment](#production-deployment)
-- [Future Improvements](#future-improvements)
+- [Contributing](#contributing)
+- [License](#license)
 
-## 🛠 Installation
+## 🔍 Overview
 
-### Prerequisites
-- Python 3.11+
-- Docker (optional, for containerized deployment)
-- Google Gemini API key
+Gani AI is a full-stack application that provides AI-powered functionality through a clean and intuitive interface. The project consists of:
 
-### Local Setup
+- **Backend**: FastAPI-based REST API server
+- **Frontend**: Modern web interface built with React/Next.js
 
-1. **Clone the repository**
-```bash
-git clone <repository-url>
-cd indonesian-legal-rag
+## 📁 Project Structure
+
+```
+gani_ai/
+├── src/
+│   ├── backend/           # FastAPI backend application
+│   │   ├── main.py        # Main application entry point
+│   │   ├── requirements.txt
+│   │   └── ...
+│   └── frontend/          # Frontend application
+│       ├── package.json
+│       ├── app/
+│       └── ...
+├── README.md
+└── ...
 ```
 
-2. **Create virtual environment**
+## 📋 Prerequisites
+
+Before running this application, make sure you have the following installed:
+
+- **Python 3.8+**
+- **Node.js 16+**
+- **npm or yarn**
+- **Conda** (recommended for Python environment management)
+- **Git**
+
+## 🚀 Installation
+
+### 1. Clone the Repository
+
 ```bash
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or
-venv\Scripts\activate  # Windows
+git clone https://github.com/Riandra4trend/gani_ai.git
+cd gani_ai
 ```
 
-3. **Install dependencies**
+### 2. Backend Setup
+
+Navigate to the backend directory and set up the Python environment:
+
+```bash
+cd src/backend
+```
+
+Create a new conda environment:
+
+```bash
+conda create -n gani_ai python=3.9
+conda activate gani_ai
+```
+
+Install Python dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Set up environment variables**
+### 3. Frontend Setup
+
+Navigate to the frontend directory:
+
 ```bash
-cp .env.example .env
-# Edit .env and add your GEMINI_API_KEY
+cd ../frontend
 ```
 
-5. **Run the application**
+Install Node.js dependencies:
+
 ```bash
-python main.py
-```
-
-The API will be available at `http://localhost:8000`
-
-### Docker Setup
-
-1. **Build and run with Docker Compose**
-```bash
-# Copy and configure environment
-cp .env.example .env
-# Edit .env with your configuration
-
-# Build and start services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-```
-
-## ⚡ Quick Start
-
-### 1. Start the Service
-```bash
-python main.py
-```
-
-### 2. Query Legal Documents
-```bash
-curl -X POST "http://localhost:8000/query" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "Apa itu hak asasi manusia menurut UUD 1945?",
-    "use_hyde": true,
-    "max_results": 5
-  }'
-```
-
-### 3. Upload New Document
-```bash
-curl -X POST "http://localhost:8000/upload-text" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Peraturan Baru 2024",
-    "document_type": "text",
-    "content": "Isi peraturan...",
-    "category": "Peraturan Pemerintah"
-  }'
-```
-
-### 4. Check System Health
-```bash
-curl "http://localhost:8000/health"
+npm install
 ```
 
 ## ⚙️ Configuration
 
-The application uses environment variables for configuration. Key settings:
+### Environment Variables
 
-### API Configuration
+Create a `.env` file in the root directory and add your API keys:
+
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
-APP_HOST=0.0.0.0
-APP_PORT=8000
 ```
 
-### RAG Parameters
-```env
-RETRIEVAL_K=5           # Number of documents to retrieve
-RERANK_K=3             # Number of documents after reranking
-SIMILARITY_THRESHOLD=0.7  # Minimum similarity score
-HYDE_ENABLED=true       # Enable HYDE enhancement
+**Important**: 
+- Replace `your_gemini_api_key_here` with your actual Gemini API key
+- Never commit your `.env` file to version control
+- Add `.env` to your `.gitignore` file
+
+### Getting a Gemini API Key
+
+1. Visit [Google AI Studio](https://aistudio.google.com/)
+2. Sign in with your Google account
+3. Create a new API key
+4. Copy the key and add it to your `.env` file
+
+## 🏃‍♂️ Running the Application
+
+### Start the Backend Server
+
+1. Make sure your conda environment is activated:
+```bash
+conda activate gani_ai
 ```
 
-### Document Processing
-```env
-CHUNK_SIZE=1000        # Characters per chunk
-CHUNK_OVERLAP=200      # Overlap between chunks
+2. Navigate to the backend directory:
+```bash
+cd src/backend
 ```
 
-See `.env.example` for complete configuration options.
+3. Start the FastAPI server:
+```bash
+uvicorn main:app --reload
+```
+
+The backend server will start on `http://localhost:8000`
+
+### Start the Frontend Development Server
+
+1. Open a new terminal window/tab
+2. Navigate to the frontend directory:
+```bash
+cd src/frontend
+```
+
+3. Start the development server:
+```bash
+npm run dev
+```
+
+The frontend application will start on `http://localhost:3000` (or the next available port)
 
 ## 📖 API Documentation
 
-### Interactive Documentation
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+Once the backend server is running, you can access:
 
-### Key Endpoints
+- **Interactive API Documentation**: `http://localhost:8000/docs` (Swagger UI)
+- **Alternative API Documentation**: `http://localhost:8000/redoc` (ReDoc)
 
-#### Query Legal Documents
-```
-POST /query
-```
-Process legal queries through the multi-agent RAG system.
+## 🛠️ Development
 
-**Request Body:**
-```json
-{
-  "query": "Pertanyaan hukum Anda",
-  "use_hyde": true,
-  "max_results": 5,
-  "include_sources": true
-}
-```
+### Backend Development
 
-**Response:**
-```json
-{
-  "query": "Pertanyaan hukum Anda",
-  "answer": "Jawaban komprehensif...",
-  "sources": [...],
-  "confidence_score": 0.85,
-  "processing_time": 2.3,
-  "hyde_info": {...}
-}
-```
+The backend is built with:
+- **FastAPI**: Modern, fast web framework for building APIs
+- **Python**: Core programming language
+- **Uvicorn**: ASGI server for running the application
 
-#### Upload Document
-```
-POST /upload-document
-```
-Upload legal documents (PDF, HTML, or text).
+### Frontend Development
 
-#### Search Documents
-```
-GET /search-documents?query=search_term&limit=10
-```
-Search existing documents by similarity.
+The frontend is built with modern web technologies. Check the `package.json` file for specific dependencies.
 
-#### System Health
-```
-GET /health
-```
-Check system health and status.
+### Making Changes
 
-#### Metrics
-```
-GET /metrics
-```
-Get application performance metrics.
+1. Backend changes: The server will automatically reload thanks to the `--reload` flag
+2. Frontend changes: The development server supports hot reloading
 
-## 🏗 Architecture
+## 🚀 Deployment
 
-### System Overview
+### Production Backend
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Frontend      │    │   FastAPI        │    │   Vector Store  │
-│   Application   │◄──►│   Application    │◄──►│   (ChromaDB)    │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │
-                                ▼
-                       ┌──────────────────┐
-                       │   LangGraph      │
-                       │   Multi-Agent    │
-                       │   Workflow       │
-                       └──────────────────┘
-                                │
-                ┌───────────────┼───────────────┐
-                ▼               ▼               ▼
-    ┌─────────────────┐ ┌─────────────┐ ┌─────────────────┐
-    │   HYDE Service  │ │  Document   │ │   Gemini LLM    │
-    │   Enhancement   │ │  Processor  │ │   Integration   │
-    └─────────────────┘ └─────────────┘ └─────────────────┘
-```
+For production, you might want to use:
 
-### Component Details
-
-#### 1. **FastAPI Application** (`main.py`)
-- RESTful API endpoints
-- Request/response validation with Pydantic
-- Background task processing
-- Comprehensive error handling
-- Health checks and metrics
-
-#### 2. **Multi-Agent RAG System** (`rag_agents.py`)
-- **Query Analyzer**: Classifies and analyzes user queries
-- **HYDE Generator**: Creates hypothetical documents for better retrieval
-- **Document Retriever**: Performs hybrid search across legal documents
-- **Answer Generator**: Generates comprehensive legal responses
-- **Document Reviewer**: Reviews answers for accuracy and completeness
-- **Quality Controller**: Makes final decisions on answer quality
-
-#### 3. **Vector Store Service** (`vector_store.py`)
-- ChromaDB integration with FastEmbed embeddings
-- Hybrid search combining semantic and keyword matching
-- Document similarity search with reranking
-- Metadata filtering and management
-
-#### 4. **HYDE Service** (`hyde_service.py`)
-- Hypothetical Document Embeddings for improved retrieval
-- Adaptive HYDE based on retrieval quality
-- Multi-perspective document generation
-- Confidence scoring for HYDE effectiveness
-
-#### 5. **Document Processor** (`document_processor.py`)
-- PDF and HTML content extraction
-- Intelligent text chunking with overlap
-- Metadata extraction and management
-- Support for various document formats
-
-### Data Flow
-
-1. **Query Processing**:
-   ```
-   User Query → Query Analysis → HYDE Generation → Document Retrieval 
-   → Answer Generation → Review → Quality Control → Final Response
-   ```
-
-2. **Document Upload**:
-   ```
-   Document Upload → Content Extraction → Metadata Creation → Text Chunking 
-   → Embedding Generation → Vector Store Storage
-   ```
-
-## 🔧 Development
-
-### Code Quality
-The project follows production-level Python standards:
-
-- **Type Hints**: Full mypy type coverage
-- **Linting**: Ruff for code quality
-- **Testing**: Pytest framework (tests can be added)
-- **Logging**: Structured logging throughout
-- **Error Handling**: Comprehensive exception management
-
-### Development Setup
-
-1. **Install development dependencies**
 ```bash
-pip install -r requirements.txt
-pip install ruff mypy pytest
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-2. **Run code quality checks**
+### Production Frontend
+
+Build the frontend for production:
+
 ```bash
-# Linting
-ruff check .
-
-# Type checking
-mypy .
-
-# Tests (when implemented)
-pytest
+npm run build
 ```
 
-3. **Pre-commit hooks** (recommended)
-```bash
-pip install pre-commit
-pre-commit install
-```
+## 📝 Troubleshooting
 
-### Project Structure
-```
-indonesian-legal-rag/
-├── main.py                 # FastAPI application
-├── config.py              # Configuration management
-├── models.py              # Pydantic models
-├── vector_store.py        # Vector storage service
-├── document_processor.py  # Document processing
-├── hyde_service.py        # HYDE implementation
-├── rag_agents.py          # LangGraph multi-agent system
-├── requirements.txt       # Python dependencies
-├── Dockerfile            # Container configuration
-├── docker-compose.yml    # Multi-service setup
-├── .env.example         # Environment template
-└── README.md           # This documentation
-```
+### Common Issues
 
-## 🚀 Production Deployment
+1. **Port already in use**: If you get port errors, either kill the process using the port or specify a different port
+2. **Environment not activated**: Make sure to activate your conda environment before running the backend
+3. **Missing dependencies**: Run `pip install -r requirements.txt` and `npm install` to ensure all dependencies are installed
+4. **API key issues**: Verify your `GEMINI_API_KEY` is correctly set in the `.env` file
 
-### Docker Deployment
+### Getting Help
 
-1. **Production docker-compose**
-```bash
-# Use production configuration
-cp .env.example .env.prod
-# Configure production values
+If you encounter any issues:
 
-# Deploy with specific compose file
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-2. **Environment Configuration**
-```env
-# Production settings
-APP_DEBUG=false
-APP_HOST=0.0.0.0
-APP_PORT=8000
-
-# Security
-RATE_LIMIT_REQUESTS=1000
-RATE_LIMIT_WINDOW=3600
-
-# Performance
-RETRIEVAL_K=10
-MAX_ITERATIONS=5
-```
-
-### Scaling Considerations
-
-1. **Horizontal Scaling**
-   - Deploy multiple API instances behind a load balancer
-   - Use Redis for shared caching
-   - Implement distributed vector storage
-
-2. **Performance Optimization**
-   - Enable GPU acceleration for embeddings
-   - Implement connection pooling
-   - Add response caching
-
-3. **Monitoring**
-   - Prometheus metrics integration
-   - Grafana dashboards
-   - Log aggregation with ELK stack
-
-### Security
-
-1. **API Security**
-   - Implement proper authentication (JWT tokens)
-   - Rate limiting per user/IP
-   - Input validation and sanitization
-
-2. **Data Security**
-   - Encrypt sensitive data at rest
-   - Secure vector store access
-   - API key rotation
-
-## 📈 Performance Characteristics
-
-### Benchmarks (Typical Performance)
-- **Query Processing**: 2-5 seconds per query
-- **Document Upload**: 1-3 seconds per document
-- **Retrieval Accuracy**: 85-90% relevant results
-- **HYDE Improvement**: 10-15% accuracy boost
-
-### Memory Usage
-- **Base Application**: ~500MB RAM
-- **Vector Store**: ~100MB per 1000 documents
-- **Peak Usage**: ~2GB for large document collections
-
-### Throughput
-- **Concurrent Queries**: 10-20 requests/second
-- **Document Processing**: 50-100 documents/minute
-- **Vector Search**: <100ms average latency
-
-## 🔮 Future Improvements
-
-### Technical Enhancements
-
-1. **Advanced RAG Techniques**
-   - **Graph RAG**: Knowledge graph integration for complex queries
-   - **Multi-Modal RAG**: Support for images, tables, and charts
-   - **Temporal RAG**: Time-aware document retrieval
-   - **Cross-Lingual RAG**: Multi-language support
-
-2. **AI/ML Improvements**
-   - **Fine-tuned Embeddings**: Custom embeddings for Indonesian legal text
-   - **Query Classification**: Intent detection and routing
-   - **Answer Validation**: Fact-checking against legal databases
-   - **Summarization**: Multi-document summarization
-
-3. **Performance Optimizations**
-   - **Caching Strategy**: Intelligent query and result caching
-   - **Async Processing**: Full async document processing pipeline
-   - **GPU Acceleration**: CUDA-enabled embeddings and inference
-   - **Distributed Architecture**: Microservices for scalability
-
-### Feature Additions
-
-1. **User Experience**
-   - **Chat Interface**: Conversational query handling
-   - **Citation Generation**: Automatic legal citation formatting
-   - **Export Options**: PDF, Word, and other format exports
-   - **Query History**: User query tracking and analytics
-
-2. **Legal-Specific Features**
-   - **Case Law Integration**: Jurisprudence and court decisions
-   - **Legal Updates**: Automatic tracking of regulation changes
-   - **Conflict Detection**: Identification of conflicting regulations
-   - **Legal Reasoning**: Step-by-step legal analysis
-
-3. **Integration Capabilities**
-   - **API Gateway**: Advanced API management
-   - **Webhook Support**: Real-time notifications
-   - **Third-party Integrations**: Legal databases and systems
-   - **Mobile App**: Native mobile applications
-
-### Scalability Improvements
-
-1. **Infrastructure**
-   - **Kubernetes Deployment**: Container orchestration
-   - **Auto-scaling**: Dynamic resource allocation
-   - **Multi-region**: Geographic distribution
-   - **CDN Integration**: Global content delivery
-
-2. **Data Management**
-   - **Data Pipeline**: ETL for legal document processing
-   - **Version Control**: Document version tracking
-   - **Backup Strategy**: Automated backup and recovery
-   - **Data Governance**: Compliance and audit trails
+1. Check the terminal output for error messages
+2. Verify all prerequisites are installed
+3. Ensure environment variables are properly set
+4. Check that all dependencies are installed correctly
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Run code quality checks
-6. Submit a pull request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## 📄 License
 
-This project is licensed under the MIT License. See LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 📞 Support
+## 🔗 Links
 
-For questions, issues, or contributions:
-
-- **Documentation**: Check this README and API docs
-- **Issues**: Use GitHub Issues for bug reports
-- **Discussions**: GitHub Discussions for questions
-- **Email**: [Your contact email]
-
-## 🙏 Acknowledgments
-
-- **LangChain**: For the excellent RAG framework
-- **LangGraph**: For multi-agent workflow capabilities
-- **Google Gemini**: For powerful language model API
-- **ChromaDB**: For efficient vector storage
-- **FastEmbed**: For high-quality embeddings
-- **Indonesian Legal Community**: For domain expertise
+- **Backend Repository**: [https://github.com/Riandra4trend/gani_ai/tree/main/src/backend](https://github.com/Riandra4trend/gani_ai/tree/main/src/backend)
+- **Frontend Repository**: [https://github.com/Riandra4trend/gani_ai/tree/main/src/frontend](https://github.com/Riandra4trend/gani_ai/tree/main/src/frontend)
+- **Main Repository**: [https://github.com/Riandra4trend/gani_ai](https://github.com/Riandra4trend/gani_ai)
 
 ---
 
-**Built with ❤️ for Indonesian Legal Technology**
+**Made with ❤️ by the Gani AI Team**
