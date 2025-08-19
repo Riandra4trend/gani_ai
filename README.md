@@ -2,7 +2,7 @@
 
 A full-stack AI application with a Python FastAPI backend and a modern frontend interface.
 
-## 📋 Table of Contents
+## Table of Contents
 - [Overview](#overview)
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
@@ -11,16 +11,15 @@ A full-stack AI application with a Python FastAPI backend and a modern frontend 
 - [Running the Application](#running-the-application)
 - [API Documentation](#api-documentation)
 - [Contributing](#contributing)
-- [License](#license)
 
-## 🔍 Overview
+## Overview
 
 Gani AI is a full-stack application that provides AI-powered functionality through a clean and intuitive interface. The project consists of:
 
 - **Backend**: FastAPI-based REST API server
 - **Frontend**: Modern web interface built with React/Next.js
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 gani_ai/
@@ -37,7 +36,7 @@ gani_ai/
 └── ...
 ```
 
-## 📋 Prerequisites
+## Prerequisites
 
 Before running this application, make sure you have the following installed:
 
@@ -47,7 +46,7 @@ Before running this application, make sure you have the following installed:
 - **Conda** (recommended for Python environment management)
 - **Git**
 
-## 🚀 Installation
+## Installation
 
 ### 1. Clone the Repository
 
@@ -113,7 +112,7 @@ GEMINI_API_KEY=your_gemini_api_key_here
 3. Create a new API key
 4. Copy the key and add it to your `.env` file
 
-## 🏃‍♂️ Running the Application
+## Running the Application
 
 ### Start the Backend Server
 
@@ -149,14 +148,14 @@ npm run dev
 
 The frontend application will start on `http://localhost:3000` (or the next available port)
 
-## 📖 API Documentation
+## API Documentation
 
 Once the backend server is running, you can access:
 
 - **Interactive API Documentation**: `http://localhost:8000/docs` (Swagger UI)
 - **Alternative API Documentation**: `http://localhost:8000/redoc` (ReDoc)
 
-## 🛠️ Development
+## Development
 
 ### Backend Development
 
@@ -174,7 +173,7 @@ The frontend is built with modern web technologies. Check the `package.json` fil
 1. Backend changes: The server will automatically reload thanks to the `--reload` flag
 2. Frontend changes: The development server supports hot reloading
 
-## 🚀 Deployment
+## Deployment
 
 ### Production Backend
 
@@ -192,7 +191,7 @@ Build the frontend for production:
 npm run build
 ```
 
-## 📝 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -210,7 +209,7 @@ If you encounter any issues:
 3. Ensure environment variables are properly set
 4. Check that all dependencies are installed correctly
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -218,16 +217,10 @@ If you encounter any issues:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🔗 Links
+## Links
 
 - **Backend Repository**: [https://github.com/Riandra4trend/gani_ai/tree/main/src/backend](https://github.com/Riandra4trend/gani_ai/tree/main/src/backend)
 - **Frontend Repository**: [https://github.com/Riandra4trend/gani_ai/tree/main/src/frontend](https://github.com/Riandra4trend/gani_ai/tree/main/src/frontend)
 - **Main Repository**: [https://github.com/Riandra4trend/gani_ai](https://github.com/Riandra4trend/gani_ai)
 
 ---
-
-**Made with ❤️ by the Gani AI Team**
