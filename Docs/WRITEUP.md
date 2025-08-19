@@ -6,10 +6,11 @@ This system is a sophisticated **Retrieval-Augmented Generation (RAG)** applicat
 ## Desain System
 
 ### Document Processor to DB Vector
-{link 1}
+![Document Process System](https://raw.githubusercontent.com/Riandra4trend/gani_ai/main/desain%20system/Document%20Process%20System.jpg)
 
 ### RAG Agents
-{link 1}
+![Document Process System](https://github.com/Riandra4trend/gani_ai/blob/main/desain%20system/RAG%20Agent%20System.jpg)
+
 
 ## System Architecture
 
